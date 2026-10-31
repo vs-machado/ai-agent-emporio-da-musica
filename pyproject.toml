@@ -16,6 +16,7 @@ dependencies = [
     "pgvector",
     "psycopg[binary]",
     "pydantic-settings",
+    "python-dotenv>=1.2.4",
     "ragas",
     "sqlalchemy",
     "uvicorn[standard]",
