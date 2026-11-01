@@ -17,4 +17,19 @@ Para executar as mesmas verificações manualmente:
 uv run pre-commit run --all-files
 ```
 
+## Versões das dependências
+
+As dependências diretas e de desenvolvimento em `pyproject.toml` têm como limite inferior
+as versões do ambiente validado e um limite superior exclusivo: a próxima versão major
+para bibliotecas a partir de 1.0 e a próxima versão minor para bibliotecas 0.x.
+A restrição de `langchain-community<0.4` preserva a compatibilidade atual com Ragas.
+Esses intervalos reduzem atualizações incompatíveis, mas não garantem compatibilidade
+de todas as versões permitidas.
+
+Para reproduzir o ambiente, incluindo versões exatas das dependências transitivas,
+use `uv sync --locked` com o `uv.lock` versionado. O Docker também usa esse modo.
+Uma instalação sem o lock pode selecionar versões mais novas dentro dos intervalos.
+Mudanças de limites e atualizações do lock devem ser acompanhadas das verificações
+de qualidade e dos testes relevantes.
+
 O hook é instalado por clone e não substitui verificações de CI. Quando a CI for configurada, ela deverá executar as mesmas verificações. Avisos de dependências em tempo de execução também devem ser investigados; o Ruff não detecta todos eles.
