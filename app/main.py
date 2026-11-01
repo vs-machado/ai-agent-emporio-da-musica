@@ -8,6 +8,7 @@ from app.agents.factory import build_chat_service
 from app.config import Settings
 from app.database import create_database_engine, create_session_factory
 from app.rag.retrieval import LlamaIndexPolicyRetriever
+from app.routes.chat import router as chat_router
 from app.routes.health import router as health_router
 from app.tools import build_tools
 
@@ -37,3 +38,4 @@ app = FastAPI(
 
 
 app.include_router(health_router)
+app.include_router(chat_router)

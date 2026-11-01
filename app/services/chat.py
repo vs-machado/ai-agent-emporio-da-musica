@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.conversation import Conversation, ConversationTurn
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.errors import ChatHistoryError, ChatHistoryLimitError, ChatRequestConflictError
 
 UNAVAILABLE_MESSAGE = (
     "Não consegui concluir o atendimento agora. Tente novamente em instantes "
@@ -52,26 +53,26 @@ def validate_history(history: Sequence[BaseMessage], max_messages: int) -> None:
         ValueError: Histórico excede o limite ou contém chamadas de tools sem resultado.
     """
     if len(history) > max_messages:
-        raise ValueError("Histórico excede o limite de mensagens do atendimento")
+        raise ChatHistoryLimitError("Histórico excede o limite de mensagens do atendimento")
     if history and not isinstance(history[0], HumanMessage):
-        raise ValueError("O histórico deve começar por uma mensagem do cliente")
+        raise ChatHistoryError("O histórico deve começar por uma mensagem do cliente")
     pending: set[str] = set()
     for message in history:
         if isinstance(message, ToolMessage):
             if message.tool_call_id not in pending:
-                raise ValueError("Resultado de tool sem chamada correspondente")
+                raise ChatHistoryError("Resultado de tool sem chamada correspondente")
             pending.remove(message.tool_call_id)
         elif isinstance(message, AIMessage):
             if pending or message.invalid_tool_calls:
-                raise ValueError("Histórico contém chamadas de tools incompletas")
+                raise ChatHistoryError("Histórico contém chamadas de tools incompletas")
             ids = [call["id"] for call in message.tool_calls]
             if not all(ids) or len(set(ids)) != len(ids):
-                raise ValueError("IDs de chamadas de tools inválidos")
+                raise ChatHistoryError("IDs de chamadas de tools inválidos")
             pending.update(ids)
         elif not isinstance(message, HumanMessage) or pending:
-            raise ValueError("Papel ou sequência inválida no histórico")
+            raise ChatHistoryError("Papel ou sequência inválida no histórico")
     if pending or (history and not isinstance(history[-1], AIMessage)):
-        raise ValueError("O histórico deve terminar em um turno concluído")
+        raise ChatHistoryError("O histórico deve terminar em um turno concluído")
 
 
 class ChatService:
@@ -123,7 +124,7 @@ class ChatService:
             for saved in turns:
                 if saved.request_id == request.request_id:
                     if saved.message != request.message:
-                        raise ValueError(
+                        raise ChatRequestConflictError(
                             "request_id já utilizado com outra mensagem nesta conversa"
                         )
                     return ChatTurn(
