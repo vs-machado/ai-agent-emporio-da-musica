@@ -6,5 +6,7 @@
 !alembic.ini
 !migrations/
 !migrations/**
+!agent-data/
+!agent-data/*.csv
 **/__pycache__/
 **/*.py[cod]
