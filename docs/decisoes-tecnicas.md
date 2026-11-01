@@ -106,6 +106,38 @@ Para o escopo atual, com apenas um PDF curto, uma solução mais simples também
 
 A primeira versão usará busca vetorial com fallback textual, com quantidade e tamanho dos trechos limitados. A recuperação será avaliada no benchmark com perguntas que exijam tanto correspondência semântica quanto regras e exceções em seções diferentes. Posteriormente, o benchmark será usado para comparar essa abordagem com busca híbrida e avaliar se combinar resultados vetoriais e textuais traz benefício relevante.
 
+### Chunking E Recuperação De Contexto
+
+A abordagem inicial combinará três mecanismos:
+
+1. **Structure-aware chunking:** dividir o manual respeitando títulos, seções, subseções, parágrafos, listas e tabelas. A subseção será a unidade padrão; seções sem subseções formarão unidades próprias. Listas e tabelas deverão preservar a associação entre regras, condições e exceções. Seções que atravessam páginas serão reconstruídas, removendo cabeçalhos e rodapés repetidos. Divisões internas adicionais serão feitas apenas quando o tamanho da unidade exigir, respeitando esses limites estruturais.
+2. **Recuperação de múltiplos chunks:** buscar vários trechos relevantes para permitir respostas apoiadas em mais de uma seção. A configuração inicial será top-k de 5 candidatos e até 5 evidências finais, após expansão e deduplicação, respeitando um orçamento total de contexto de aproximadamente 2.000 tokens. Não haverá corte intermediário fixo para 3 evidências nem reranking na primeira versão; será preservada a ordem de relevância da busca, usando a posição do candidato mais bem classificado quando houver agrupamento pela expansão. A seleção deverá preservar unidades coerentes, sem truncar condições ou exceções apenas para preencher o orçamento. Esses parâmetros serão ajustados por avaliação; aumentar o top-k, por si só, não garante recuperar todas as regras necessárias.
+3. **Expansão estrutural automática:** quando necessário, complementar o trecho recuperado com sua subseção completa ou contexto hierárquico relevante, usando relações derivadas da estrutura do documento. A expansão deverá preservar referências, deduplicar conteúdo e respeitar o orçamento total de contexto.
+
+Os trechos terão metadados de origem, versão do documento, identificação e título da seção, hierarquia e páginas de origem. O texto usado para embeddings incluirá os títulos hierárquicos para contextualizar cada unidade. As evidências enviadas ao modelo preservarão o conteúdo da fonte e sua localização, sem substituir as políticas por resumos gerados.
+
+A escolha aproveita a estrutura explícita e as subseções curtas do manual. Sentence window retrieval não será a estratégia inicial: frases vizinhas nem sempre preservam tabelas e listas, e não alcançam necessariamente exceções em seções distantes. A expansão estrutural também não garante cobrir dependências entre seções distintas. Por exemplo, uma resposta sobre desconto PIX em produto promocional precisa considerar tanto a seção 3 quanto a seção 6.2.
+
+### Indexação, Versionamento E Contratos
+
+- A indexação identificará o arquivo por hash e registrará a versão declarada no manual e a configuração de processamento: parser, estratégia de chunking, modelo e dimensão dos embeddings. Reexecutar a mesma fonte com a mesma configuração não deverá duplicar os dados. Mudanças na fonte ou na configuração exigirão uma nova versão do índice.
+- Uma nova versão só substituirá a versão ativa após concluir a extração, a validação dos trechos e a geração e persistência dos embeddings com sucesso. Falhas durante a atualização preservarão a versão ativa anterior. A consulta usará uma única versão ativa, tanto na busca vetorial quanto no fallback textual, evitando misturar políticas ou vetores incompatíveis.
+- Cada evidência preservará página inicial e final, além da seção e da origem. O contrato atual de `PolicyPassage`, que contém apenas `page`, deverá ser ajustado para representar intervalos de páginas. O limite atual de 2.000 caracteres por passagem também deverá ser revisto para comportar unidades completas sem truncamento silencioso.
+- `PolicySearch.limit` representará o máximo de evidências finais, com padrão 5 e máximo 5. O top-k de candidatos será uma configuração interna do retriever, inicialmente 5, independente desse limite de saída.
+- O orçamento aproximado de 2.000 tokens se aplicará ao conjunto de evidências, incluindo títulos e referências. Se uma expansão não couber, será reduzido primeiro o contexto estrutural adicional; se necessário, serão omitidas unidades completas, preservando a ordem de relevância. Uma unidade que exceda sozinha o orçamento deverá ser dividida em blocos coerentes na indexação, sem cortar condições ou exceções arbitrariamente durante a consulta.
+
+### Avaliação E Alternativas De Retrieval
+
+O benchmark avaliará a cobertura das evidências necessárias, incluindo condições e exceções, a precisão das referências e a qualidade das respostas, além de latência e volume de contexto. Encontrar apenas um trecho semelhante à pergunta não será suficiente. Haverá casos que exigem múltiplas seções, como PIX e cumulatividade de promoções, e casos que exigem reconstrução entre páginas, como entregas para outras cidades e privacidade. Ambiguidades e divergências da fonte deverão ser preservadas e sinalizadas, sem inventar uma regra para resolvê-las.
+
+Se o desempenho inicial não for satisfatório, serão consideradas as seguintes alternativas, conforme as falhas observadas:
+
+- **Busca híbrida:** combinar resultados vetoriais e lexicais na mesma consulta para melhorar a recuperação de termos específicos, valores e nomes. Sua adoção dependerá de ganho demonstrado sobre a busca vetorial com fallback textual.
+- **Decomposição da pergunta:** realizar buscas complementares para aspectos diferentes de uma pergunta, ajudando a recuperar regras distribuídas entre seções. O ganho de cobertura deverá compensar o processamento e a latência adicionais.
+- **Reranking:** reordenar candidatos recuperados antes de selecionar as evidências finais. Essa etapa pode melhorar a precisão, mas não recupera evidências ausentes do conjunto de candidatos.
+- **Parent-child retrieval:** indexar unidades menores para busca e retornar a subseção ou seção correspondente como contexto. Será considerado se a granularidade inicial prejudicar a recuperação; a expansão deverá evitar incluir regras de outros cenários sem necessidade e não resolve, sozinha, dependências entre pais diferentes.
+- **Relações explícitas entre políticas:** vincular trechos complementares para expansão entre seções, inclusive distantes. Essas relações podem vir de referências presentes no texto, de curadoria ou de inferência automatizada com validação. Poderão ser armazenadas no PostgreSQL, sem exigir banco de grafos ou GraphRAG. Relações semânticas manuais exigem manutenção a cada atualização e serão consideradas como apoio para dependências críticas, sem tornar a cobertura geral dependente do mapeamento prévio de todas as relações.
+
 ### Fallback Da Busca De Políticas
 
 Se a geração de embeddings ou a consulta vetorial falhar, a tool de políticas recorrerá à busca textual nos trechos e metadados armazenados no PostgreSQL. O número e o tamanho dos trechos enviados ao modelo permanecerão limitados, e ambos os caminhos serão avaliados com perguntas representativas.
@@ -140,5 +172,5 @@ Esse mecanismo é um fallback, não uma busca híbrida executada em todas as con
 - Regras de guardrails além do prompt, incluindo proteção de acesso a pedidos e prevenção de respostas comerciais sem dados de tools.
 - Contrato final da API de chat, incluindo o formato do ID de conversa e a autenticação do cliente.
 - Processo efetivo de acompanhamento humano das reclamações e confirmação das ambiguidades comerciais identificadas no manual.
-- Estratégia de chunking e metadados do manual de políticas.
+- Implementação do chunking e retrieval definidos e ajuste dos parâmetros com base no benchmark.
 - Cenários de demonstração e testes automatizados.
