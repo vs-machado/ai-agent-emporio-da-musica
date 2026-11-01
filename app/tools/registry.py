@@ -9,10 +9,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.schemas.base import Input
 from app.schemas.catalog import ProductDetails, ProductSearch, PromotionSearch
+from app.schemas.clock import CurrentDateTime
 from app.schemas.commerce import PaymentQuote, ShippingQuote
-from app.schemas.orders import ComplaintRegistration, OrderLookup
+from app.schemas.orders import ComplaintRegistration, OrderLookup, RefundQuote
 from app.schemas.policies import PolicySearch
 from app.services.catalog import CatalogService
+from app.services.clock import ClockService
 from app.services.commerce import CommerceService
 from app.services.orders import OrderService
 from app.services.policies import PolicyRetriever, PolicyService
@@ -21,6 +23,20 @@ from app.services.policies import PolicyRetriever, PolicyService
 def service_tool(
     name: str, description: str, schema: type[Input], handler: Callable
 ) -> StructuredTool:
+    """Adapta um serviço, preservando validação inclusive para consultas sem campos.
+
+    Args:
+        name: Nome da tool disponível para o modelo.
+        description: Instruções de uso em português.
+        schema: Contrato de entrada validado antes de executar o serviço.
+        handler: Operação que recebe a entrada validada.
+
+    Returns:
+        Tool com falhas operacionais sanitizadas. Contratos sem campos são expostos
+        como JSON Schema para evitar que o atalho de entrada vazia do LangChain
+        descarte argumentos extras antes da validação feita pelo adaptador.
+    """
+
     def invoke(**kwargs) -> dict:
         try:
             request = schema.model_validate(kwargs)
@@ -44,7 +60,7 @@ def service_tool(
         func=invoke,
         name=name,
         description=description,
-        args_schema=schema,
+        args_schema=schema if schema.model_fields else schema.model_json_schema(),
         handle_validation_error=(
             "Parâmetros inválidos. Confira os campos e limites definidos no schema da tool."
         ),
@@ -62,14 +78,24 @@ def build_tools(
             RAG não estiver configurado; a tool reporta essa indisponibilidade.
 
     Returns:
-        Oito tools com schemas e descrições em português. As operações comerciais
+        Dez tools com schemas e descrições em português. As operações comerciais
         só simulam condições, e o registro de reclamações não notifica a equipe.
     """
     catalog = CatalogService(sessions)
     commerce = CommerceService(sessions)
     orders = OrderService(sessions)
     policies = PolicyService(policy_retriever)
+    clock = ClockService()
     definitions = (
+        (
+            "get_current_datetime",
+            "Consulta data, hora e dia da semana atuais no fuso America/Campo_Grande, "
+            "incluindo offset UTC. Sem parâmetros e sem acesso ao banco. Use para referências "
+            "a hoje, agora e expediente atual; consulte search_policy para os horários da loja. "
+            "Não verifica feriados, horários especiais nem confirma se a loja está aberta.",
+            CurrentDateTime,
+            clock.get_current_datetime,
+        ),
         (
             "search_products",
             "Busca instrumentos por nome, categoria, marca no nome e faixa de preço atual. "
@@ -101,6 +127,20 @@ def build_tools(
             "comprova recebimento nem elegibilidade para troca ou garantia.",
             OrderLookup,
             orders.get_order_status,
+        ),
+        (
+            "calculate_refund",
+            "Consulta ou calcula referência de reembolso com número e e-mail "
+            "cadastrado fornecidos pelo cliente. "
+            "Sem items, considera devolução integral; para parcial, informe produtos e quantidades "
+            "do pedido consultado. Usa o total registrado, nunca preços atuais. O rateio em pedido "
+            "com um único produto é estimativa do protótipo, não regra do manual. Pedidos com "
+            "produtos diferentes não permitem rateio parcial; "
+            "cancelados exigem verificar pagamento. "
+            "Respeite requires_confirmation: não verifica elegibilidade, "
+            "não aprova e não executa reembolsos.",
+            RefundQuote,
+            orders.calculate_refund,
         ),
         (
             "calculate_payment",

@@ -1,5 +1,6 @@
-"""Consulta mínima de pedidos e registro persistente de reclamações."""
+"""Consulta de pedidos, simulação de reembolso e registro de reclamações."""
 
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -7,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import Complaint, Customer, Order, OrderItem, Product
-from app.schemas.orders import ComplaintRegistration, OrderLookup
+from app.schemas.orders import ComplaintRegistration, OrderLookup, RefundQuote
 from app.services.catalog import money
 
 ORDER_NOT_FOUND = {
@@ -68,6 +69,122 @@ class OrderService:
                 "limitations": (
                     "A previsão não comprova recebimento. Não é possível aprovar troca, "
                     "devolução ou garantia sem confirmar datas e condições necessárias."
+                ),
+            }
+
+    def calculate_refund(self, request: RefundQuote) -> dict:
+        """Simula um valor de referência sem aprovar ou executar reembolso.
+
+        Args:
+            request: Pedido e e-mail correspondentes; seleção opcional de produtos
+                e quantidades. Ausência da seleção representa devolução integral.
+
+        Returns:
+            Total registrado para devolução integral ou estimativa proporcional
+            quando o pedido contém um único produto. O cálculo proporcional usa
+            o total antes de arredondar, não um preço unitário médio já arredondado.
+            Devoluções parciais de pedidos com produtos diferentes, cancelamentos
+            e dados incompletos não recebem valor estimado. Resultados localizados
+            exigem confirmação: o manual não define fórmula e a fonte não comprova
+            pagamento, reembolsos anteriores ou composição de frete e descontos.
+        """
+        with self.sessions() as session:
+            order = self._verified_order(session, request.order_id, request.email)
+            if order is None:
+                return dict(ORDER_NOT_FOUND)
+            purchased = dict(
+                session.execute(
+                    select(OrderItem.product_id, OrderItem.quantity).where(
+                        OrderItem.order_id == order.order_id
+                    )
+                ).all()
+            )
+            requested = (
+                {item.product_id: item.quantity for item in request.items}
+                if request.items is not None
+                else purchased
+            )
+            if request.items is not None and any(
+                product_id not in purchased or quantity > purchased[product_id]
+                for product_id, quantity in requested.items()
+            ):
+                return {
+                    "status": "invalid_input",
+                    "message": "Os produtos e quantidades a devolver devem pertencer ao pedido.",
+                }
+            scope = "full" if requested == purchased else "partial"
+            result = {
+                "status": "requires_confirmation",
+                "order_id": order.order_id,
+                "order_status": order.status,
+                "order_total_brl": money(order.total_brl),
+                "refund_scope": scope,
+                "refund_amount_brl": None,
+                "amount_kind": "undetermined",
+                "payment_verified": False,
+                "eligibility_checked": False,
+                "refund_approved": False,
+                "refund_executed": False,
+                "limitations": (
+                    "O manual não define fórmula de reembolso. A fonte não discrimina frete, "
+                    "descontos ou preço histórico por item, nem comprova pagamento ou reembolsos "
+                    "anteriores. O valor efetivo e a elegibilidade dependem de confirmação "
+                    "da equipe; nenhuma operação é realizada."
+                ),
+            }
+            if order.status == "cancelled":
+                return {
+                    **result,
+                    "calculation_basis": "payment_verification_required",
+                    "message": (
+                        "Pedido cancelado: confirme com a equipe se houve pagamento e se existe "
+                        "valor a devolver. Cancelamento não comprova ausência de pagamento "
+                        "nem reembolso realizado."
+                    ),
+                }
+            if not purchased:
+                return {
+                    **result,
+                    "calculation_basis": "order_items_unavailable",
+                    "message": (
+                        "Não há itens para conferir a composição do pedido; consulte a equipe."
+                    ),
+                }
+            if scope == "full":
+                return {
+                    **result,
+                    "refund_amount_brl": money(order.total_brl),
+                    "amount_kind": "recorded_total_reference",
+                    "calculation_basis": "recorded_order_total",
+                    "message": (
+                        "Referência para devolução integral: total registrado no pedido. "
+                        "Isso não confirma pagamento, direito à devolução ou valor aprovado."
+                    ),
+                }
+            if len(purchased) != 1:
+                return {
+                    **result,
+                    "calculation_basis": "historical_item_prices_unavailable",
+                    "message": (
+                        "Pedido com produtos diferentes: sem preços históricos dos itens, "
+                        "o valor da devolução parcial precisa ser confirmado pela equipe."
+                    ),
+                }
+            product_id, bought_quantity = next(iter(purchased.items()))
+            quantity = requested[product_id]
+            amount = order.total_brl * Decimal(quantity) / Decimal(bought_quantity)
+            return {
+                **result,
+                "refund_amount_brl": money(amount),
+                "amount_kind": "proportional_estimate",
+                "calculation_basis": "prototype_proportional_order_total",
+                "product_id": product_id,
+                "purchased_quantity": bought_quantity,
+                "return_quantity": quantity,
+                "message": (
+                    "Estimativa proporcional: total registrado × quantidade a devolver ÷ "
+                    "quantidade comprada. É uma convenção do protótipo, não uma regra do manual "
+                    "nem um preço unitário histórico confirmado. Valide o valor com a equipe."
                 ),
             }
 

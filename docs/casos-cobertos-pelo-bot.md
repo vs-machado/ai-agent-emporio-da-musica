@@ -124,4 +124,5 @@ O bot deve responder de forma cordial a temas que a loja não atende.
 - O manual descreve frete acima e abaixo de R$ 500,00, mas não exatamente nesse valor. Também não esclarece a exceção de parcelamento abaixo de R$ 50,00. Solicitar confirmação da equipe para esses casos.
 - A previsão de entrega não comprova recebimento. As tools não aprovam automaticamente trocas, devoluções ou garantias com base nessa previsão.
 - O preço atual não representa preço histórico de compra. Promoções sem datas permitem informar o estado registrado, não quando começaram ou terminaram.
+- A tool `calculate_refund` fornece o total registrado como referência para devolução integral. Para devolução parcial de unidades do mesmo produto, pode calcular valor proporcional como convenção do protótipo, sujeita à confirmação, sem atribuir essa fórmula ao manual. Não rateia devoluções parciais de produtos diferentes e exige verificar eventual pagamento em pedidos cancelados; não aprova nem executa reembolso.
 - As tools não realizam compras, pagamentos, reservas, cancelamentos ou reembolsos. As convenções técnicas e o comportamento de simulação ficam registrados em `decisoes-tecnicas.md`.
