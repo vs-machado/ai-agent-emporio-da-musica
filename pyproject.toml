@@ -4,29 +4,29 @@ version = "0.1.0"
 description = "Protótipo de assistente de atendimento da Empório da Música"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-    "alembic",
-    "fastapi",
-    "gradio",
-    "langchain",
-    "langchain-community<0.4",
-    "litellm",
-    "llama-index-core",
-    "llama-index-embeddings-google-genai>=0.6.0",
-    "llama-index-vector-stores-postgres",
-    "pgvector",
-    "psycopg[binary]",
-    "pydantic-settings",
-    "ragas",
-    "sqlalchemy",
-    "uvicorn[standard]",
+    "alembic>=1.20.1,<2",
+    "fastapi>=0.162.0,<0.163",
+    "gradio>=6.31.0,<7",
+    "langchain>=1.4.7,<2",
+    "langchain-community>=0.3.31,<0.4",
+    "litellm>=1.106.6,<2",
+    "llama-index-core>=0.14.25,<0.15",
+    "llama-index-embeddings-google-genai>=0.6.0,<0.7",
+    "llama-index-vector-stores-postgres>=0.9.0,<0.10",
+    "pgvector>=0.5.1,<0.6",
+    "psycopg[binary]>=3.3.6,<4",
+    "pydantic-settings>=2.16.2,<3",
+    "ragas>=0.4.3,<0.5",
+    "sqlalchemy>=2.0.55,<3",
+    "uvicorn[standard]>=0.54.0,<0.55",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx",
-    "pre-commit>=4.7.0",
-    "pytest",
-    "ruff",
+    "httpx>=0.28.1,<0.29",
+    "pre-commit>=4.7.0,<5",
+    "pytest>=9.2.0,<10",
+    "ruff>=0.17.3,<0.18",
 ]
 
 [tool.ruff]
