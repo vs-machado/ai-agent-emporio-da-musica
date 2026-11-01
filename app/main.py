@@ -6,7 +6,9 @@ from fastapi import FastAPI
 
 from app.config import Settings
 from app.database import create_database_engine, create_session_factory
+from app.rag.retrieval import LlamaIndexPolicyRetriever
 from app.routes.health import router as health_router
+from app.tools import build_tools
 
 
 @asynccontextmanager
@@ -15,6 +17,8 @@ async def lifespan(app: FastAPI):
     engine = create_database_engine(settings)
     app.state.session_factory = create_session_factory(engine)
     try:
+        app.state.policy_retriever = LlamaIndexPolicyRetriever(engine, settings)
+        app.state.tools = build_tools(app.state.session_factory, app.state.policy_retriever)
         yield
     finally:
         engine.dispose()
