@@ -19,10 +19,12 @@ from app.tools.registry import service_tool
 def test_tools_expose_schemas_for_tool_calling():
     tools = build_tools(sessionmaker())
     assert {tool.name for tool in tools} == {
+        "get_current_datetime",
         "search_products",
         "get_product_details",
         "get_active_promotions",
         "get_order_status",
+        "calculate_refund",
         "calculate_payment",
         "calculate_shipping",
         "register_complaint",
@@ -31,8 +33,16 @@ def test_tools_expose_schemas_for_tool_calling():
     for tool in tools:
         schema = convert_to_openai_tool(tool)["function"]
         assert schema["description"]
-        assert schema["parameters"]["properties"]
-        assert tool.args_schema.model_json_schema()["additionalProperties"] is False
+        if tool.name == "get_current_datetime":
+            assert schema["parameters"]["properties"] == {}
+        else:
+            assert schema["parameters"]["properties"]
+        input_schema = (
+            tool.args_schema
+            if isinstance(tool.args_schema, dict)
+            else tool.args_schema.model_json_schema()
+        )
+        assert input_schema["additionalProperties"] is False
 
 
 @pytest.mark.parametrize(

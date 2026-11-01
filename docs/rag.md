@@ -2,7 +2,7 @@
 
 O manual `kb/políticas_da_loja.pdf` é a única fonte indexada. A implementação está
 em `app/rag/` e segue as [decisões técnicas](decisoes-tecnicas.md). Não gera respostas
-por LLM: entrega evidências para a tool `search_policy` e para o agente futuro.
+por LLM: entrega evidências para a tool `search_policy`, usada pelo agente de atendimento.
 
 ## Preparação e execução local
 
@@ -50,7 +50,7 @@ indexação, com banco e migrations já preparados. Um índice idêntico existen
 reutilizado sem chamar o provedor.
 
 As variáveis do Compose incluem a chave e os parâmetros RAG. `OPENROUTER_API_KEY`
-é opcional e está reservada ao futuro fallback de chat DeepSeek via OpenRouter;
+é opcional e habilita o fallback de chat DeepSeek via OpenRouter;
 não é usada nos embeddings. Não há indexação no lifespan da API nem na ingestão dos CSVs.
 Fora do Docker, o tiktoken pode baixar o vocabulário em sua primeira utilização;
 depois reutiliza seu cache local.
@@ -60,7 +60,7 @@ depois reutiliza seu cache local.
 | Variável | Padrão | Uso |
 |---|---|---|
 | `GOOGLE_API_KEY` | vazia | Necessária para novos embeddings; não é armazenada no índice |
-| `OPENROUTER_API_KEY` | vazia | Opcional; reservada ao futuro fallback de chat DeepSeek |
+| `OPENROUTER_API_KEY` | vazia | Opcional; habilita o fallback de chat DeepSeek |
 | `RAG_EMBEDDING_MODEL` | `gemini-embedding-001` | Mesmo modelo para documentos e perguntas |
 | `RAG_EMBEDDING_DIMENSIONS` | `768` | Dimensão fixa nesta migration |
 | `RAG_TOP_K` | `5` | Candidatos antes de expansão e deduplicação |

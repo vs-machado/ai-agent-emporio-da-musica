@@ -13,6 +13,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project \
     && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
+ENV LITELLM_LOCAL_MODEL_COST_MAP="True"
+
 COPY app ./app
 COPY alembic.ini ./
 COPY migrations ./migrations

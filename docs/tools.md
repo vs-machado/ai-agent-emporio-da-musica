@@ -30,10 +30,12 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
 
 | Tool | Casos | Comportamento |
 |---|---|---|
+| `get_current_datetime` | 1, referências temporais | Data/hora atual, dia da semana e fuso da loja, sem consultar feriados ou expediente |
 | `search_products` | 2 | Nome, categoria, marca no nome, preço atual e disponibilidade; paginação limitada |
 | `get_product_details` | 2, 4 | Preços, estoque, specs e alternativas disponíveis da mesma categoria |
 | `get_active_promotions` | 4 | Campanhas ativas e consulta opcional de inativas, sem inventar vigência |
 | `get_order_status` | 5, 6, 7, 9 | Pedido e rastreio após conferir ID e e-mail; não aprova trocas ou garantias |
+| `calculate_refund` | 6 | Total registrado para devolução integral ou estimativa proporcional de unidades iguais, sempre sujeita à confirmação |
 | `calculate_payment` | 3, 4 | Carrinho consultado, PIX não cumulativo, crédito, débito, boleto e elegibilidade de combinação |
 | `calculate_shipping` | 5 | Regra local, prazos estimados ou necessidade de informação/cotação |
 | `register_complaint` | 8, 9 | Protocolo persistente e idempotência, sem afirmar encaminhamento operacional |
@@ -41,6 +43,14 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
 
 ## Contratos e regras
 
+- `get_current_datetime` não recebe parâmetros. Usa o relógio do servidor e o fuso
+  IANA `America/Campo_Grande`, independentemente do fuso configurado no sistema.
+  Retorna data/hora local e UTC em ISO 8601, dia da semana, offset e indicador de
+  horário de verão. O offset atual é UTC−4; regras históricas vêm do `zoneinfo`,
+  com `tzdata` como base de fusos disponível para ambientes sem dados do sistema.
+  A tool funciona sem banco ou chaves. Não informa `is_open`: feriados e horários
+  especiais não são verificados, e `holiday_calendar_available=false` explicita isso.
+  Os horários regulares devem ser consultados por `search_policy`.
 - Schemas ficam em `app/schemas/`, separados por domínio, com descrições em português,
   campos extras proibidos, limites de resultados, quantidades e tamanhos de texto.
 - Serviços recebem objetos Pydantic validados; as tools aceitam argumentos JSON.
@@ -71,11 +81,31 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
   E-mail errado e pedido inexistente têm a mesma resposta. Cadastro de clientes,
   notas internas e preços unitários históricos não são retornados.
 - A previsão de entrega nunca é convertida em data real de recebimento.
+- `calculate_refund` exige pedido e e-mail correspondentes. Omitir `items` ou usar
+  `null` significa devolução integral; uma lista identifica os produtos e quantidades
+  desejados, sem duplicar produtos nem exceder o que foi comprado. Selecionar todos
+  os itens e quantidades também corresponde à devolução integral.
+- Na devolução integral, `refund_amount_brl` referencia `orders.total_brl` e
+  `amount_kind=recorded_total_reference`. Para devolução parcial de um pedido que
+  contém apenas um produto, retorna `amount_kind=proportional_estimate`, calculado
+  por total registrado × quantidade a devolver ÷ quantidade comprada. Só o resultado
+  final é arredondado para centavos com `ROUND_HALF_UP`. O rateio é convenção do
+  protótipo, não fórmula definida no manual nem preço unitário histórico confirmado.
+- Pedidos com produtos diferentes não recebem rateio parcial. Pedidos cancelados
+  exigem verificar eventual pagamento, sem presumir ausência de pagamento ou
+  reembolso já realizado. Nesses casos, `refund_amount_brl=null`, não zero.
+- Uma consulta de reembolso bem-sucedida retorna `requires_confirmation`, mesmo
+  quando há valor de referência. O total não discrimina frete/descontos e a fonte
+  não comprova pagamento, reembolsos anteriores ou elegibilidade. As flags
+  `payment_verified`, `eligibility_checked`, `refund_approved` e `refund_executed`
+  permanecem falsas. A operação não altera pedidos, estoque ou registros financeiros.
 - Reclamações exigem e-mail e relato. Pedido é opcional e, quando informado,
   precisa corresponder ao e-mail. O chamador deve gerar uma `request_id` UUID
   por solicitação e reutilizá-la nos retries. O agente não deve solicitar essa
   chave ao cliente; a integração futura deve fornecer e preservar esse contexto.
   A mesma chave com dados diferentes retorna `request_conflict` sem alterar o registro.
+  Na integração do agente, o campo técnico é ocultado do modelo e o middleware
+  deriva a chave do `ChatRequest.request_id`, preservando-a em retries do turno.
 - Registro não notifica a equipe: `forwarded_to_team=false`. O retorno explicita
   a ausência de garantia operacional de resposta em 24 horas úteis.
 - Falhas de banco e transporte retornam `unavailable`, sem SQL, parâmetros,
@@ -96,8 +126,10 @@ inventar políticas ou responder como se a consulta tivesse funcionado.
 O lifespan da API já constrói o retriever e as tools em `app.state`, sem indexar
 o PDF ou chamar provedores na inicialização. Sem índice ativo, a consulta retorna
 `unavailable`; sem chave de embeddings, um índice existente pode ser consultado
-pelo fallback textual. Agente, histórico, autenticação e processo humano continuam
-como etapas próprias. Não há busca baseada no documento de casos ou nos CSVs.
+pelo fallback textual. O agente e o `ChatService` já estão integrados; veja
+[Agente de atendimento](agente.md). Histórico persistente, API de chat, autenticação
+e processo humano continuam como etapas próprias. Não há busca baseada no documento
+de casos ou nos CSVs.
 
 ## Verificação
 

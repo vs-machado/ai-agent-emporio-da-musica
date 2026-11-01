@@ -24,7 +24,7 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 
 ## Agente E Orquestração
 
-- LangChain será usado para o agente de tool calling: schemas, ciclo modelo-tool-modelo e execução das tools.
+- LangChain é usado pelo agente de tool calling com `create_agent`: schemas, ciclo modelo-tool-modelo e execução das tools.
 - O histórico de mensagens será persistido em PostgreSQL usando a integração SQL do LangChain, identificada por um ID de conversa. A integração com a versão escolhida do agente deverá ser validada, incluindo o armazenamento consistente de chamadas e resultados de tools.
 - O histórico visual do Gradio não substitui essa persistência. A retomada de uma conversa na interface dependerá de como o ID de conversa for associado à sessão; autenticação e controle de acesso serão definidos posteriormente.
 - Não será criado um grafo de negócio customizado nem configurado o checkpointer do LangGraph no MVP. Os casos atuais podem ser atendidos com histórico, tools e regras determinísticas; fluxos explícitos em grafo serão reconsiderados se surgirem etapas obrigatórias, espera ou retomada após intervenção humana.
@@ -33,14 +33,29 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 - A versão escolhida do LangChain pode usar LangGraph internamente; isso não implica construir um grafo customizado nem configurar seu checkpointer.
 - O agente usará tools estruturadas, não um agente SQL genérico nem um fluxo ReAct baseado em texto livre.
 
+### Integração Inicial Do ChatService
+
+- `ChatService` recebe `ChatRequest` com mensagem e `request_id` UUID, e um agente injetável. Retorna `ChatTurn`, com resposta pública e as novas mensagens internas do turno, incluindo chamadas e resultados de tools. API e interface poderão consumir a mesma fachada.
+- O chamador pode fornecer histórico interno de turnos completos. O serviço valida pares de chamadas/resultados e rejeita papéis de sistema ou histórico incompleto, sem truncamento silencioso. A persistência SQL do histórico, o ID de conversa, o endpoint HTTP e o Gradio serão implementados em etapas próprias; o agente atual não mantém sessões entre chamadas.
+- O lifespan cria `app.state.chat_service` sem chamar provedores. Sem `GOOGLE_API_KEY`, o serviço fica disponível para composição, mas retorna atendimento `unavailable` sem inferência nem respostas comerciais simuladas.
+- O prompt em português fica em `app/agents/prompt.py`. Ele orienta uso das fontes, escopo, ambiguidades e limitações comerciais. A aderência do modelo real ainda precisará ser avaliada; o prompt não substitui autenticação ou validações determinísticas dos serviços.
+- A apresentação do atendimento usará nome já informado ou contexto confiável, empatia e encerramento cordial, sem exigir identificação apenas para personalizar. O prompt explicita estados dos produtos, preço original/desconto/preço promocional de ofertas ativas enquanto durarem os estoques e consultas complementares para exceções. Totais sem frete e preços atuais não serão apresentados como total entregue ou preço histórico de compra; exclusão de dados dependerá do canal humano, sem simular execução.
+- Cada turno permite inicialmente seis rodadas de modelo e doze chamadas de tools, com até 2.048 tokens de saída por chamada e timeout de 20 segundos por tentativa de provedor. Histórico de entrada é limitado a cem mensagens. Os parâmetros são configuráveis por `CHAT_*`; não há streaming nesta etapa.
+- A chave de reclamação é derivada de `request_id` por UUID v5 e injetada antes da execução. O campo técnico é removido do schema apresentado ao modelo; valores eventualmente gerados por ele são sobrescritos. Uma solicitação suporta um registro de reclamação, e retries devem reutilizar o mesmo ID. Dados diferentes com a mesma chave continuam sujeitos ao conflito validado pelo serviço.
+- Falhas de provedor e limites de execução produzem mensagens públicas em português. Resultados de tools já executadas permanecem no transcript; se uma reclamação já foi registrada, sua referência também aparece na resposta de interrupção, sem afirmar envio à equipe.
+
 ## Modelos E Fallback
 
-- LiteLLM será a camada de acesso a modelos e de roteamento entre provedores.
+- LiteLLM é a camada de acesso aos provedores, integrada ao LangChain por `langchain-litellm`. O roteamento de fallback ocorre em middleware por chamada de modelo.
 - Modelo primário: Gemini 2.5 Flash-Lite.
 - Modelo de fallback: DeepSeek V4.1 Flash, acessado via OpenRouter.
-- `OPENROUTER_API_KEY` será opcional. Ausente ou vazia, o futuro agente usará apenas o Gemini, sem configurar uma rota de fallback DeepSeek. Essa chave não é necessária para indexação nem retrieval das políticas; a integração de chat via LiteLLM ainda será implementada.
+- `OPENROUTER_API_KEY` é opcional. Ausente ou vazia, o agente usa apenas o Gemini, sem configurar uma rota de fallback DeepSeek. Essa chave não é necessária para indexação nem retrieval das políticas.
 - O fallback ocorrerá somente em falhas técnicas recuperáveis, como timeout, rate limit e erros 5xx do provedor.
 - O fallback não será acionado para substituir uma resposta válida nem no meio de uma chamada de tool sem preservar o estado do turno.
+
+O middleware tenta o fallback uma vez na chamada que falhou, preservando exatamente o contexto de mensagens e resultados de tools. Após a troca, mantém o fallback nas demais rodadas daquele turno; um novo turno volta a tentar o primário. Erros de autenticação, requisição inválida, contexto excedido ou resposta malformada não acionam o fallback. Retries automáticos dos adaptadores ficam desabilitados para não multiplicar tentativas ou reexecutar o turno inteiro.
+
+O adaptador local preserva metadados e assinaturas das chamadas ao reenviar mensagens ao mesmo modelo, sem transportar extensões específicas de um provedor para o outro. Valida argumentos JSON antes de permitir execução de tools. O SDK OpenAI é uma dependência explícita para tratar a hierarquia de erros normalizada pelo LiteLLM, sem usar um modelo OpenAI na aplicação. Identificadores dos modelos são configuráveis; disponibilidade, comportamento de tool calling e qualidade dos provedores ainda serão verificados com chaves reais.
 
 ### Justificativa Dos Modelos
 
@@ -72,11 +87,17 @@ O fallback de chat não substitui o serviço de embeddings. Quando o Gemini Embe
 - `register_complaint`: registra reclamações em uma tabela `complaints`, com status inicial `open`, para acompanhamento pela equipe.
 - `calculate_payment`: consulta produtos e promoções para calcular condições de pagamento de um carrinho, sem receber preços informados pelo modelo.
 - `calculate_shipping`: consulta o carrinho para estimar o frete local ou informar a necessidade de cotação externa.
+- `calculate_refund`: consulta o total registrado para devolução integral ou calcula uma estimativa proporcional para devolução parcial de um pedido composto apenas pelo mesmo produto. Exige número/e-mail correspondentes e confirmação da equipe; não aprova nem executa reembolso.
+- `get_current_datetime`: fornece data/hora atual e dia da semana no fuso IANA `America/Campo_Grande`, com offset UTC calculado e indicador de horário de verão. Não recebe fuso ou data do modelo e não consulta banco nem provedor externo.
+
+O fuso da loja é `America/Campo_Grande`, atualmente UTC−4. Será usado `zoneinfo` com a dependência `tzdata` para disponibilizar as regras IANA também em ambientes sem base de fusos do sistema. O relógio do servidor fornece o instante, convertido para a loja independentemente do fuso do host/container. Para perguntas sobre abertura agora ou retorno fora do expediente, o agente combina essa tool com `search_policy`. O relógio não consulta feriados nem horários especiais; sem essas evidências, o agente informa o expediente regular sem garantir abertura ou uma data exata de retorno. A tool não implementa regras de expediente.
 
 Número do pedido e e-mail não comprovam controle da conta e não substituem autenticação. O acesso a dados sensíveis e a identificação real do cliente serão tratados na discussão de guardrails.
 
 ### Limitações E Complementos
 
+- O manual informa condições, forma e prazo de reembolso, mas não sua fórmula. A tool de reembolso acrescenta uma convenção explícita do protótipo: para unidades do mesmo produto, valor proporcional = total registrado × quantidade a devolver ÷ quantidade comprada, com arredondamento apenas no resultado final. O valor é estimativa, não preço histórico comprovado ou regra atribuída ao manual. Para devolução integral, o total registrado serve como referência. Não se usam preços ou promoções atuais para reconstruir a compra.
+- Devoluções parciais de pedidos com produtos diferentes não podem ser calculadas sem discriminação histórica por item. Pedidos cancelados exigem verificar se houve pagamento e se existe algo a devolver, sem assumir valor zero ou reembolso anterior. Todas as referências de reembolso retornam `requires_confirmation`: a fonte não comprova pagamento, devoluções anteriores nem composição de frete e descontos. Elegibilidade permanece dependente das políticas e da confirmação humana; a tool é somente leitura.
 - Pagamento e frete terão tools próprias, apoiadas em serviços determinísticos separados do LangChain. Valores monetários usam `Decimal`, com arredondamento para centavos. Nenhuma dessas tools efetua pagamento, reserva estoque ou cria pedidos.
 - A simulação de frete considera o subtotal com promoções antes do desconto por forma de pagamento. Essa convenção do protótipo deve ser confirmada pela equipe antes de uso comercial.
 - O manual não define o frete para exatamente R$ 500,00 e não esclarece a exceção abaixo de R$ 50,00 no parcelamento em até 3x. Esses limites devem retornar necessidade de confirmação humana, sem assumir uma condição comercial.
@@ -179,5 +200,5 @@ Esse mecanismo é um fallback, não uma busca híbrida executada em todas as con
 - Regras de guardrails além do prompt, incluindo proteção de acesso a pedidos e prevenção de respostas comerciais sem dados de tools.
 - Contrato final da API de chat, incluindo o formato do ID de conversa e a autenticação do cliente.
 - Processo efetivo de acompanhamento humano das reclamações e confirmação das ambiguidades comerciais identificadas no manual.
-- Implementação do chunking e retrieval definidos e ajuste dos parâmetros com base no benchmark.
+- Avaliação do RAG e do agente com provedores reais e ajuste dos parâmetros com base no benchmark.
 - Cenários de demonstração e testes automatizados.
