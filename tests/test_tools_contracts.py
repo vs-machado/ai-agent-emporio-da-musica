@@ -102,14 +102,22 @@ def test_policy_retriever_returns_only_bounded_evidence_with_metadata():
             assert query == "garantia"
             assert limit == 1
             return [
-                PolicyPassage(text="Trecho de teste", source="manual.pdf", page=7, section="8.1")
+                PolicyPassage(
+                    text="Trecho de teste",
+                    source="manual.pdf",
+                    page_start=7,
+                    page_end=7,
+                    section="8.1",
+                    title="Garantia legal",
+                    document_version="2.1",
+                )
             ] * 2
 
     tool = next(t for t in build_tools(sessionmaker(), Retriever()) if t.name == "search_policy")
     result = tool.invoke({"query": "garantia", "limit": 1})
     assert result["status"] == "ok"
     assert len(result["passages"]) == 1
-    assert result["passages"][0]["page"] == 7
+    assert result["passages"][0]["page_start"] == 7
 
 
 def test_empty_policy_search_does_not_fabricate_rules():

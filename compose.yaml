@@ -7,6 +7,13 @@ x-app: &app
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
     POSTGRES_HOST: db
     POSTGRES_PORT: 5432
+    GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-gemini-embedding-001}
+    RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-768}
+    RAG_TOP_K: ${RAG_TOP_K:-5}
+    RAG_CONTEXT_TOKENS: ${RAG_CONTEXT_TOKENS:-2000}
+    RAG_CHUNK_TOKENS: ${RAG_CHUNK_TOKENS:-1000}
 
 services:
   migrate:
@@ -23,6 +30,13 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+  index-policies:
+    <<: *app
+    command: ["python", "-m", "app.rag"]
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
   api:
     <<: *app
     restart: unless-stopped
@@ -32,6 +46,8 @@ services:
       db:
         condition: service_healthy
       ingest:
+        condition: service_completed_successfully
+      index-policies:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10)"]

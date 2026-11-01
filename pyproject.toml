@@ -16,8 +16,10 @@ dependencies = [
     "pgvector>=0.5.1,<0.6",
     "psycopg[binary]>=3.3.6,<4",
     "pydantic-settings>=2.16.2,<3",
+    "pypdf>=6.1,<7",
     "ragas>=0.4.3,<0.5",
     "sqlalchemy>=2.0.55,<3",
+    "tiktoken>=0.14,<0.15",
     "uvicorn[standard]>=0.54.0,<0.55",
 ]
 

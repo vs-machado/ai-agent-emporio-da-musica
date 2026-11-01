@@ -9,10 +9,13 @@ consultas e transações ficam em `app/services/`, sem depender de LLM.
 ```python
 from app.config import Settings
 from app.database import create_database_engine, create_session_factory
+from app.rag.retrieval import LlamaIndexPolicyRetriever
 from app.tools import build_tools
 
-engine = create_database_engine(Settings())
-tools = build_tools(create_session_factory(engine))
+settings = Settings()
+engine = create_database_engine(settings)
+retriever = LlamaIndexPolicyRetriever(engine, settings)
+tools = build_tools(create_session_factory(engine), policy_retriever=retriever)
 catalog = next(tool for tool in tools if tool.name == "search_products")
 result = catalog.invoke({"category": "violões", "max_price": "1000.00"})
 ```
@@ -21,6 +24,7 @@ O banco deve estar preparado pelas migrations e pela ingestão. O Compose já
 executa essa preparação. Fora do Docker, use `uv run alembic upgrade head` e
 `uv run python -m app.ingestion`. A migration `0003` acrescenta `complaints`.
 A factory não inicia um agente, não chama provedores e não cria endpoints de chat.
+Para consultar o manual, prepare também o índice conforme [RAG das políticas](rag.md).
 
 ## Cobertura
 
@@ -33,7 +37,7 @@ A factory não inicia um agente, não chama provedores e não cria endpoints de 
 | `calculate_payment` | 3, 4 | Carrinho consultado, PIX não cumulativo, crédito, débito, boleto e elegibilidade de combinação |
 | `calculate_shipping` | 5 | Regra local, prazos estimados ou necessidade de informação/cotação |
 | `register_complaint` | 8, 9 | Protocolo persistente e idempotência, sem afirmar encaminhamento operacional |
-| `search_policy` | 1, 3–10 | Contrato para recuperação do manual, com trechos e metadados, aguardando RAG |
+| `search_policy` | 1, 3–10 | Recuperação LlamaIndex/pgvector do manual, expansão estrutural e fallback textual |
 
 ## Contratos e regras
 
@@ -82,14 +86,18 @@ A factory não inicia um agente, não chama provedores e não cria endpoints de 
 
 `build_tools(sessions, policy_retriever=...)` aceita um objeto que implemente
 `PolicyRetriever.search(query, limit)`. Cada `PolicyPassage` contém `text`, `source`,
-`page` e `section`; há limite de cinco trechos, de até 2.000 caracteres cada.
+`page_start`, `page_end`, `section`, `title` e `document_version`. O padrão e o
+máximo são cinco evidências finais, dentro do orçamento total configurado em tokens.
+O limite antigo de 2.000 caracteres por trecho foi removido para preservar unidades completas.
 O serviço não gera respostas, só devolve evidências. Sem retriever, a tool retorna
 `unavailable`; sem resultados, retorna `not_found`. Nenhum desses estados permite
 inventar políticas ou responder como se a consulta tivesse funcionado.
 
-A implementação do RAG LlamaIndex/pgvector, fallback textual, agente, histórico,
-autenticação e processo humano continuam como etapas próprias. Não há uma busca
-alternativa baseada no documento de casos ou nos CSVs.
+O lifespan da API já constrói o retriever e as tools em `app.state`, sem indexar
+o PDF ou chamar provedores na inicialização. Sem índice ativo, a consulta retorna
+`unavailable`; sem chave de embeddings, um índice existente pode ser consultado
+pelo fallback textual. Agente, histórico, autenticação e processo humano continuam
+como etapas próprias. Não há busca baseada no documento de casos ou nos CSVs.
 
 ## Verificação
 

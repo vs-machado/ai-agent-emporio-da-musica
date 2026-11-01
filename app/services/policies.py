@@ -3,6 +3,7 @@
 from typing import Protocol
 
 from app.schemas.policies import PolicyPassage, PolicySearch
+from app.services.errors import PolicyRetrievalError
 
 
 class PolicyRetriever(Protocol):
@@ -19,12 +20,12 @@ class PolicyService:
         """Consulta exclusivamente o serviço de recuperação do manual.
 
         Args:
-            request: Dúvida e limite de trechos, cada um com até 2.000 caracteres.
+            request: Dúvida e limite de até cinco evidências finais.
 
         Returns:
-            Trechos com origem, página e seção, sem gerar respostas. A ausência
-            de retrieval informa indisponibilidade; uma busca vazia não confirma
-            uma política. O RAG e seu fallback serão implementados separadamente.
+            Trechos com origem, versão, intervalo de páginas e seção, sem gerar respostas.
+            A ausência de retrieval informa indisponibilidade; uma busca vazia não confirma
+            uma política. O retriever gerencia expansão e orçamento de contexto.
         """
         if self.retriever is None:
             return {
@@ -35,10 +36,17 @@ class PolicyService:
                     "consultar o manual; solicite orientação da equipe."
                 ),
             }
-        passages = [
-            PolicyPassage.model_validate(p)
-            for p in self.retriever.search(request.query, request.limit)[: request.limit]
-        ]
+        try:
+            passages = [
+                PolicyPassage.model_validate(p)
+                for p in self.retriever.search(request.query, request.limit)[: request.limit]
+            ]
+        except PolicyRetrievalError:
+            return {
+                "status": "unavailable",
+                "passages": [],
+                "message": "Manual não disponível para consulta. Solicite orientação da equipe.",
+            }
         return {
             "status": "ok" if passages else "not_found",
             "passages": [passage.model_dump() for passage in passages],

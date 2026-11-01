@@ -8,5 +8,7 @@
 !migrations/**
 !agent-data/
 !agent-data/*.csv
+!kb/
+!kb/*.pdf
 **/__pycache__/
 **/*.py[cod]
