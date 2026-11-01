@@ -9,6 +9,7 @@ LiteLLM e tools estruturadas. O RAG continua separado, atrás da tool `search_po
 |---|---|
 | `app/schemas/chat.py` | Entrada e resposta pública |
 | `app/services/chat.py` | Fachada, contrato do agente e validação do histórico |
+| `app/models/conversation.py` | Conversas por UUID e turnos completos em JSON |
 | `app/agents/factory.py` | Composição das dependências |
 | `app/agents/models.py` | Adaptador `langchain-litellm`, configuração e classificação de falhas |
 | `app/agents/runner.py` | Agente padrão, fallback, limites e idempotência das reclamações |
@@ -78,10 +79,18 @@ No Docker, depois da preparação dos serviços:
 docker compose run --rm --no-deps api python -m app.agents "Qual é a política de devolução?"
 ```
 
-O comando imprime a resposta pública em JSON e encerra com código 0 em caso de
-sucesso ou 1 em caso de indisponibilidade/limite. A execução é de um turno, sem
-persistir a conversa. `--request-id UUID` permite repetir a mesma solicitação
-com uma chave estável. Sem chaves, os testes abaixo validam o fluxo offline.
+O comando imprime a resposta pública em JSON, incluindo `conversation_id`, e encerra
+com código 0 em caso de sucesso ou 1 em caso de indisponibilidade/limite. Cada execução
+carrega o histórico e persiste o turno no PostgreSQL (migration `0005`). Sem UUID informado,
+inicia uma conversa. Para continuar e para repetir uma solicitação já salva:
+
+```bash
+uv run python -m app.agents "Quais as condições no PIX?" --conversation-id UUID_DA_CONVERSA
+uv run python -m app.agents "Quais as condições no PIX?" --conversation-id UUID_DA_CONVERSA --request-id UUID_DO_TURNO
+```
+
+Reutilize ambos os IDs e o mesmo texto em retries. Sem chaves de modelo, o turno
+também é salvo, com resposta `unavailable`.
 
 A imagem define `LITELLM_LOCAL_MODEL_COST_MAP=True` para usar o catálogo de custos
 empacotado no LiteLLM, sem atualização remota durante a importação. Na execução
@@ -101,23 +110,34 @@ from app.tools import build_tools
 settings = Settings()
 engine = create_database_engine(settings)
 try:
-    tools = build_tools(create_session_factory(engine), LlamaIndexPolicyRetriever(engine, settings))
-    service = build_chat_service(settings, tools)
+    sessions = create_session_factory(engine)
+    tools = build_tools(sessions, LlamaIndexPolicyRetriever(engine, settings))
+    service = build_chat_service(settings, tools, session_factory=sessions)
     first = service.chat(ChatRequest(message="Quero um violão Yamaha"))
-    second = service.chat(ChatRequest(message="Quais as condições no PIX?"), history=first.messages)
+    second = service.chat(
+        ChatRequest(
+            conversation_id=first.response.conversation_id,
+            message="Quais as condições no PIX?",
+        )
+    )
     print(second.response.model_dump())
-    complete_history = [*first.messages, *second.messages]
 finally:
     engine.dispose()
 ```
 
-`ChatRequest` aceita somente texto e ID do turno, não papéis de sistema ou
-resultados de tools enviados por clientes. `history` é uma entrada interna
-confiável: a futura camada de persistência deverá recuperá-lo por conversa,
-preservando mensagens AI, chamadas e respectivos resultados.
+`ChatRequest` aceita texto, UUID da conversa e ID do turno, sem papéis de sistema ou
+resultados de tools enviados por clientes. Os IDs são gerados quando omitidos.
+Com `session_factory`, o serviço recupera o histórico pelo UUID e rejeita `history`
+manual. Sem essa dependência, o uso interno offline continua aceitando histórico
+confiável em memória.
+
+`conversations` identifica a conversa; `conversation_turns` armazena cada turno em
+ordem, com texto original, resposta pública e mensagens LangChain completas.
+A serialização preserva chamadas, argumentos, IDs, resultados de tools e metadados
+do provedor, incluindo assinaturas necessárias para continuar o diálogo.
 
 `ChatTurn.messages` contém apenas as mensagens novas. O prompt de sistema não
-faz parte desse retorno. `ChatTurn.response` contém `request_id`, `status`,
+faz parte desse retorno. `ChatTurn.response` contém `conversation_id`, `request_id`, `status`,
 `message`, `model`, `used_fallback` e `actions` com nome, estado e referência
 da operação quando houver. Não expõe raciocínio interno nem exceções de provedor.
 O transcript interno pode conter dados pessoais fornecidos para as tools; não
@@ -125,8 +145,15 @@ deve ser publicado como resposta HTTP ou confundido com histórico visual.
 
 O serviço é síncrono nesta etapa. A futura integração com endpoints assíncronos
 deverá executá-lo fora do event loop. A instância pode atender turnos independentes;
-contadores, chave e rota de fallback são locais a cada invocação. Serialização
-de turnos da mesma conversa será responsabilidade da camada de persistência.
+contadores, chave e rota de fallback são locais a cada invocação. Um lock de linha
+no PostgreSQL serializa turnos da mesma conversa durante leitura, execução e gravação,
+inclusive entre processos. Conversas diferentes podem executar em paralelo.
+Resposta e mensagens são gravadas juntas, sem turnos parciais. O limite de histórico
+é validado antes de executar o agente, sem truncar pares de tools.
+
+Falhas inesperadas fazem rollback do turno. Efeitos de tools usam suas próprias
+transações: uma reclamação já registrada permanece protegida pela chave de
+idempotência mesmo se a gravação final do chat falhar.
 
 ## Fallback e interrupções
 
@@ -157,7 +184,10 @@ Repetições da mesma solicitação devem usar o mesmo `ChatRequest.request_id`.
 Isso protege a gravação de uma reclamação mesmo se a resposta final do provedor
 falhar. Uma chave diferente representa outra solicitação. Duas reclamações com
 dados diferentes no mesmo turno conflitam; há uma reclamação por solicitação.
-Isso não implementa cache da resposta do chat nem deduplicação geral de turnos.
+Com persistência, repetir `(conversation_id, request_id)` devolve o turno salvo,
+sem chamar modelo ou tools novamente. Texto diferente com a mesma chave é rejeitado.
+Isso também vale para turnos salvos com `unavailable` ou `limit_reached`; uma nova
+tentativa de atendimento exige outro `request_id`.
 
 ## Validação offline e próximos passos
 
@@ -173,5 +203,4 @@ também exercitam catálogo, pagamento e gravação real de reclamações pelo a
 
 Essa validação não mede seleção semântica das tools, aderência real ao prompt ou
 qualidade das respostas. Com as chaves disponíveis, será necessário avaliar esses
-comportamentos e o RAG. Persistência SQL do histórico, ID de conversa, API de chat,
-Gradio e autenticação permanecem como próximas etapas.
+comportamentos e o RAG. API de chat, Gradio e autenticação permanecem como próximas etapas.
