@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from app.config import Settings
+from app.models import Base
 
 config = context.config
 if config.config_file_name is not None:
@@ -15,7 +16,7 @@ settings = Settings()
 
 
 def run_migrations_offline() -> None:
-    context.configure(url=settings.database_url, literal_binds=True)
+    context.configure(url=settings.database_url, literal_binds=True, target_metadata=Base.metadata)
     with context.begin_transaction():
         context.run_migrations()
 
@@ -23,7 +24,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     engine = create_engine(settings.database_url, poolclass=pool.NullPool)
     with engine.connect() as connection:
-        context.configure(connection=connection)
+        context.configure(connection=connection, target_metadata=Base.metadata)
         with context.begin_transaction():
             context.run_migrations()
     engine.dispose()
