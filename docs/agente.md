@@ -10,6 +10,7 @@ LiteLLM e tools estruturadas. O RAG continua separado, atrás da tool `search_po
 | `app/schemas/chat.py` | Entrada e resposta pública |
 | `app/services/chat.py` | Fachada, contrato do agente e validação do histórico |
 | `app/models/conversation.py` | Conversas por UUID e turnos completos em JSON |
+| `app/routes/chat.py` | Endpoint HTTP público `POST /chat` |
 | `app/agents/factory.py` | Composição das dependências |
 | `app/agents/models.py` | Adaptador `langchain-litellm`, configuração e classificação de falhas |
 | `app/agents/runner.py` | Agente padrão, fallback, limites e idempotência das reclamações |
@@ -18,6 +19,9 @@ LiteLLM e tools estruturadas. O RAG continua separado, atrás da tool `search_po
 O lifespan da API prepara `app.state.chat_service` com as dez tools, sem chamar
 provedores. Sem chave Google, o serviço retorna `unavailable`; isso permite
 inicializar e testar a aplicação sem inventar respostas de atendimento.
+
+O endpoint `POST /chat` usa esse serviço e retorna somente `ChatResponse`.
+Contrato, exemplos e códigos HTTP estão em [API de chat](api-chat.md).
 
 O prompt orienta o uso natural do nome quando já informado, empatia nas reclamações
 e encerramento cordial. Também explicita a interpretação de disponibilidade/status,
@@ -143,8 +147,8 @@ da operação quando houver. Não expõe raciocínio interno nem exceções de p
 O transcript interno pode conter dados pessoais fornecidos para as tools; não
 deve ser publicado como resposta HTTP ou confundido com histórico visual.
 
-O serviço é síncrono nesta etapa. A futura integração com endpoints assíncronos
-deverá executá-lo fora do event loop. A instância pode atender turnos independentes;
+O serviço é síncrono. O endpoint HTTP executa na thread pool do FastAPI, fora do
+event loop. A instância pode atender turnos independentes;
 contadores, chave e rota de fallback são locais a cada invocação. Um lock de linha
 no PostgreSQL serializa turnos da mesma conversa durante leitura, execução e gravação,
 inclusive entre processos. Conversas diferentes podem executar em paralelo.
@@ -203,4 +207,4 @@ também exercitam catálogo, pagamento e gravação real de reclamações pelo a
 
 Essa validação não mede seleção semântica das tools, aderência real ao prompt ou
 qualidade das respostas. Com as chaves disponíveis, será necessário avaliar esses
-comportamentos e o RAG. API de chat, Gradio e autenticação permanecem como próximas etapas.
+comportamentos e o RAG. Gradio e autenticação permanecem como próximas etapas.

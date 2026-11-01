@@ -25,7 +25,7 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 ## Agente E Orquestração
 
 - LangChain é usado pelo agente de tool calling com `create_agent`: schemas, ciclo modelo-tool-modelo e execução das tools.
-- O histórico de mensagens será persistido em PostgreSQL usando a integração SQL do LangChain, identificada por um ID de conversa. A integração com a versão escolhida do agente deverá ser validada, incluindo o armazenamento consistente de chamadas e resultados de tools.
+- O histórico é persistido em PostgreSQL em tabelas próprias com SQLAlchemy, identificado por UUID de conversa. A serialização de mensagens do LangChain preserva chamadas, resultados de tools e metadados. Cada turno e sua resposta pública são gravados atomicamente; um lock de linha serializa turnos da mesma conversa.
 - O histórico visual do Gradio não substitui essa persistência. A retomada de uma conversa na interface dependerá de como o ID de conversa for associado à sessão; autenticação e controle de acesso serão definidos posteriormente.
 - Não será criado um grafo de negócio customizado nem configurado o checkpointer do LangGraph no MVP. Os casos atuais podem ser atendidos com histórico, tools e regras determinísticas; fluxos explícitos em grafo serão reconsiderados se surgirem etapas obrigatórias, espera ou retomada após intervenção humana.
 - Se uma avaliação futura concluir que o LangGraph é essencial para determinadas funções do bot, ele será implementado nos fluxos que necessitarem dele.
@@ -35,8 +35,9 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 
 ### Integração Inicial Do ChatService
 
-- `ChatService` recebe `ChatRequest` com mensagem e `request_id` UUID, e um agente injetável. Retorna `ChatTurn`, com resposta pública e as novas mensagens internas do turno, incluindo chamadas e resultados de tools. API e interface poderão consumir a mesma fachada.
-- O chamador pode fornecer histórico interno de turnos completos. O serviço valida pares de chamadas/resultados e rejeita papéis de sistema ou histórico incompleto, sem truncamento silencioso. A persistência SQL do histórico, o ID de conversa, o endpoint HTTP e o Gradio serão implementados em etapas próprias; o agente atual não mantém sessões entre chamadas.
+- `ChatService` recebe `ChatRequest` com mensagem, `conversation_id` e `request_id` UUID, e um agente injetável. Retorna `ChatTurn`, com resposta pública e as novas mensagens internas do turno, incluindo chamadas e resultados de tools. API e interface consomem a mesma fachada.
+- Com persistência configurada, o serviço carrega o histórico pelo UUID e rejeita histórico manual. Sem persistência, o chamador interno pode fornecer turnos completos. A validação preserva pares de chamadas/resultados sem truncamento silencioso. Repetir conversa, solicitação e texto devolve o turno salvo, sem executar modelo ou tools novamente.
+- `POST /chat` retorna apenas `ChatResponse`, com execução síncrona na thread pool do FastAPI. Turnos concluídos usam HTTP 200, incluindo `unavailable` e `limit_reached`; conflitos de solicitação usam 409, limite de histórico 422, histórico inválido 500 e falhas de persistência 503. O contrato está em `docs/api-chat.md`. O Gradio permanece pendente.
 - O lifespan cria `app.state.chat_service` sem chamar provedores. Sem `GOOGLE_API_KEY`, o serviço fica disponível para composição, mas retorna atendimento `unavailable` sem inferência nem respostas comerciais simuladas.
 - O prompt em português fica em `app/agents/prompt.py`. Ele orienta uso das fontes, escopo, ambiguidades e limitações comerciais. A aderência do modelo real ainda precisará ser avaliada; o prompt não substitui autenticação ou validações determinísticas dos serviços.
 - A apresentação do atendimento usará nome já informado ou contexto confiável, empatia e encerramento cordial, sem exigir identificação apenas para personalizar. O prompt explicita estados dos produtos, preço original/desconto/preço promocional de ofertas ativas enquanto durarem os estoques e consultas complementares para exceções. Totais sem frete e preços atuais não serão apresentados como total entregue ou preço histórico de compra; exclusão de dados dependerá do canal humano, sem simular execução.
@@ -198,7 +199,7 @@ Esse mecanismo é um fallback, não uma busca híbrida executada em todas as con
 ## Pontos Pendentes
 
 - Regras de guardrails além do prompt, incluindo proteção de acesso a pedidos e prevenção de respostas comerciais sem dados de tools.
-- Contrato final da API de chat, incluindo o formato do ID de conversa e a autenticação do cliente.
+- Autenticação do cliente e controle de acesso às conversas na API de chat.
 - Processo efetivo de acompanhamento humano das reclamações e confirmação das ambiguidades comerciais identificadas no manual.
 - Avaliação do RAG e do agente com provedores reais e ajuste dos parâmetros com base no benchmark.
 - Cenários de demonstração e testes automatizados.
