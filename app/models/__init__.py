@@ -3,6 +3,7 @@
 from app.models.base import Base
 from app.models.category import Category
 from app.models.complaint import Complaint
+from app.models.conversation import Conversation, ConversationTurn
 from app.models.customer import Customer
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -16,6 +17,8 @@ __all__ = [
     "Base",
     "Category",
     "Complaint",
+    "Conversation",
+    "ConversationTurn",
     "Customer",
     "Order",
     "OrderItem",

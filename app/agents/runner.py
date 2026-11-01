@@ -215,6 +215,7 @@ class LangChainChatAgent:
         final = new_messages[-1]
         return ChatTurn(
             ChatResponse(
+                conversation_id=request.conversation_id,
                 request_id=request.request_id,
                 status=context.status,
                 message=final.text,

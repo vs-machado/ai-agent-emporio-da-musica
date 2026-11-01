@@ -20,7 +20,9 @@ async def lifespan(app: FastAPI):
     try:
         app.state.policy_retriever = LlamaIndexPolicyRetriever(engine, settings)
         app.state.tools = build_tools(app.state.session_factory, app.state.policy_retriever)
-        app.state.chat_service = build_chat_service(settings, app.state.tools)
+        app.state.chat_service = build_chat_service(
+            settings, app.state.tools, session_factory=app.state.session_factory
+        )
         yield
     finally:
         engine.dispose()
