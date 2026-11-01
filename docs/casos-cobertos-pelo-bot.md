@@ -114,3 +114,14 @@ O bot deve responder de forma cordial a temas que a loja não atende.
 - Informar que a Empório da Música vende apenas instrumentos musicais quando o pedido for por acessórios ou itens não comercializados.
 - Para assuntos sem relação com a loja, explicar brevemente que o assistente pode ajudar com instrumentos, pedidos, políticas, pagamento, entrega e garantia.
 - Não oferecer aconselhamento jurídico, financeiro ou técnico especializado que não esteja sustentado pela política ou pelos dados da loja.
+
+## Implementação E Limitações Do Protótipo
+
+- Catálogo, promoções, pedidos e reclamações serão atendidos por tools estruturadas. Pagamento e frete serão calculados por tools próprias, a partir dos produtos e promoções consultados no banco.
+- Informações institucionais, horário, trocas, devoluções, garantia, privacidade e escopo serão apoiadas por `search_policy`. A recuperação do manual depende da implementação do RAG; sem retrieval disponível, a tool deve informar indisponibilidade.
+- Número do pedido e e-mail correspondente são a verificação inicial do protótipo, não autenticação nem prova de titularidade. A consulta não deve expor cadastro completo do cliente nem distinguir pedido inexistente de e-mail incorreto na resposta de falha.
+- Uma reclamação registrada no banco não equivale a encaminhamento efetivo. Enquanto não houver integração com a equipe, informar essa limitação, sem prometer retorno operacional em 24 horas úteis.
+- O manual descreve frete acima e abaixo de R$ 500,00, mas não exatamente nesse valor. Também não esclarece a exceção de parcelamento abaixo de R$ 50,00. Solicitar confirmação da equipe para esses casos.
+- A previsão de entrega não comprova recebimento. As tools não aprovam automaticamente trocas, devoluções ou garantias com base nessa previsão.
+- O preço atual não representa preço histórico de compra. Promoções sem datas permitem informar o estado registrado, não quando começaram ou terminaram.
+- As tools não realizam compras, pagamentos, reservas, cancelamentos ou reembolsos. As convenções técnicas e o comportamento de simulação ficam registrados em `decisoes-tecnicas.md`.
