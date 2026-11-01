@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.agents.factory import build_chat_service
 from app.config import Settings
 from app.database import create_database_engine, create_session_factory
 from app.rag.retrieval import LlamaIndexPolicyRetriever
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
     try:
         app.state.policy_retriever = LlamaIndexPolicyRetriever(engine, settings)
         app.state.tools = build_tools(app.state.session_factory, app.state.policy_retriever)
+        app.state.chat_service = build_chat_service(settings, app.state.tools)
         yield
     finally:
         engine.dispose()

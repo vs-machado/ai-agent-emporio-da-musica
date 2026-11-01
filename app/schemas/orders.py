@@ -1,9 +1,9 @@
-"""Contratos de consulta de pedidos e registro de reclamações."""
+"""Contratos de pedidos, simulação de reembolso e registro de reclamações."""
 
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.schemas.base import Email, Identifier, Input
 
@@ -13,6 +13,31 @@ class OrderLookup(Input):
     email: Email = Field(
         description="E-mail cadastrado informado pelo cliente para verificar o pedido"
     )
+
+
+class RefundItem(Input):
+    product_id: Identifier = Field(description="ID do produto presente no pedido consultado")
+    quantity: Identifier = Field(
+        description="Quantidade desse produto que o cliente deseja devolver"
+    )
+
+
+class RefundQuote(OrderLookup):
+    items: Annotated[list[RefundItem], Field(min_length=1, max_length=20)] | None = Field(
+        default=None,
+        description=(
+            "Produtos e quantidades a devolver. Omitir ou usar null somente para simular "
+            "a devolução integral do pedido, conforme solicitado pelo cliente"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def reject_duplicate_products(self):
+        if self.items is not None:
+            ids = [item.product_id for item in self.items]
+            if len(set(ids)) != len(ids):
+                raise ValueError("Agrupe a quantidade de cada produto em um único item")
+        return self
 
 
 class ComplaintRegistration(Input):

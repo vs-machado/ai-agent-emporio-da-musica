@@ -9,10 +9,12 @@ dependencies = [
     "gradio>=6.31.0,<7",
     "langchain>=1.4.7,<2",
     "langchain-community>=0.3.31,<0.4",
+    "langchain-litellm>=0.6,<0.7",
     "litellm>=1.106.6,<2",
     "llama-index-core>=0.14.25,<0.15",
     "llama-index-embeddings-google-genai>=0.6.0,<0.7",
     "llama-index-vector-stores-postgres>=0.9.0,<0.10",
+    "openai>=2.54,<3",
     "pgvector>=0.5.1,<0.6",
     "psycopg[binary]>=3.3.6,<4",
     "pydantic-settings>=2.16.2,<3",
@@ -20,6 +22,7 @@ dependencies = [
     "ragas>=0.4.3,<0.5",
     "sqlalchemy>=2.0.55,<3",
     "tiktoken>=0.14,<0.15",
+    "tzdata>=2025.2,<2027",
     "uvicorn[standard]>=0.54.0,<0.55",
 ]
 
