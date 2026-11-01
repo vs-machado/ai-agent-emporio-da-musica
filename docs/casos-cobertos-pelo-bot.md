@@ -118,7 +118,7 @@ O bot deve responder de forma cordial a temas que a loja não atende.
 ## Implementação E Limitações Do Protótipo
 
 - Catálogo, promoções, pedidos e reclamações serão atendidos por tools estruturadas. Pagamento e frete serão calculados por tools próprias, a partir dos produtos e promoções consultados no banco.
-- Informações institucionais, horário, trocas, devoluções, garantia, privacidade e escopo serão apoiadas por `search_policy`. A recuperação do manual depende da implementação do RAG; sem retrieval disponível, a tool deve informar indisponibilidade.
+- Informações institucionais, horário, trocas, devoluções, garantia, privacidade e escopo são apoiadas por `search_policy`, com RAG LlamaIndex/pgvector e fallback textual. A consulta exige um índice ativo do manual; sem retrieval disponível, a tool informa indisponibilidade.
 - Número do pedido e e-mail correspondente são a verificação inicial do protótipo, não autenticação nem prova de titularidade. A consulta não deve expor cadastro completo do cliente nem distinguir pedido inexistente de e-mail incorreto na resposta de falha.
 - Uma reclamação registrada no banco não equivale a encaminhamento efetivo. Enquanto não houver integração com a equipe, informar essa limitação, sem prometer retorno operacional em 24 horas úteis.
 - O manual descreve frete acima e abaixo de R$ 500,00, mas não exatamente nesse valor. Também não esclarece a exceção de parcelamento abaixo de R$ 50,00. Solicitar confirmação da equipe para esses casos.

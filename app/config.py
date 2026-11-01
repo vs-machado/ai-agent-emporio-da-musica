@@ -1,6 +1,8 @@
 """Configurações da aplicação carregadas do ambiente."""
 
-from pydantic import SecretStr
+from typing import Literal
+
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -13,6 +15,26 @@ class Settings(BaseSettings):
     postgres_password: SecretStr
     postgres_host: str = "localhost"
     postgres_port: int = 5432
+    google_api_key: SecretStr | None = None
+    openrouter_api_key: SecretStr | None = None
+    rag_embedding_model: str = "gemini-embedding-001"
+    rag_embedding_dimensions: Literal[768] = 768
+    rag_top_k: int = Field(default=5, ge=1, le=30)
+    rag_context_tokens: int = Field(default=2000, ge=512, le=16000)
+    rag_chunk_tokens: int = Field(default=1000, ge=256, le=8000)
+
+    @field_validator("openrouter_api_key", mode="before")
+    @classmethod
+    def normalize_optional_key(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @model_validator(mode="after")
+    def validate_rag_budget(self):
+        if self.rag_chunk_tokens + 256 > self.rag_context_tokens:
+            raise ValueError("O orçamento RAG deve comportar um chunk e suas referências")
+        return self
 
     @property
     def database_url(self) -> URL:

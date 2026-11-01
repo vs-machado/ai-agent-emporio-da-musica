@@ -38,6 +38,7 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 - LiteLLM será a camada de acesso a modelos e de roteamento entre provedores.
 - Modelo primário: Gemini 2.5 Flash-Lite.
 - Modelo de fallback: DeepSeek V4.1 Flash, acessado via OpenRouter.
+- `OPENROUTER_API_KEY` será opcional. Ausente ou vazia, o futuro agente usará apenas o Gemini, sem configurar uma rota de fallback DeepSeek. Essa chave não é necessária para indexação nem retrieval das políticas; a integração de chat via LiteLLM ainda será implementada.
 - O fallback ocorrerá somente em falhas técnicas recuperáveis, como timeout, rate limit e erros 5xx do provedor.
 - O fallback não será acionado para substituir uma resposta válida nem no meio de uma chamada de tool sem preservar o estado do turno.
 
@@ -86,7 +87,7 @@ Número do pedido e e-mail não comprovam controle da conta e não substituem au
 - O cadastro da reclamação representa um encaminhamento apenas se houver processo efetivo de acompanhamento pela equipe; sem isso, a interface deve informar a limitação.
 - A tool de reclamações retornará protocolo e status `open`, sem afirmar envio à equipe nem garantir o prazo de 24 horas úteis enquanto o fluxo humano não estiver integrado. Repetições com a mesma chave de requisição não devem criar reclamações duplicadas.
 - A verificação inicial de pedido exige ID e e-mail correspondentes e retorna apenas os dados necessários para atendimento, sem listar clientes. Isso não implementa autenticação real.
-- `search_policy` dependerá de uma interface de retrieval injetável. Até a implementação do RAG, a ausência desse serviço retornará indisponibilidade, sem respostas fabricadas nem uso dos CSVs como base de políticas.
+- `search_policy` usa uma interface de retrieval injetável, implementada com LlamaIndex/pgvector e fallback textual. A ausência do serviço ou de um índice ativo retorna indisponibilidade, sem respostas fabricadas nem uso dos CSVs como base de políticas.
 - Perguntas sobre acessórios e assuntos fora do escopo podem ser tratadas pelo agente com base nas políticas, sem uma tool específica.
 
 ## RAG Das Políticas
@@ -122,9 +123,15 @@ A escolha aproveita a estrutura explícita e as subseções curtas do manual. Se
 
 - A indexação identificará o arquivo por hash e registrará a versão declarada no manual e a configuração de processamento: parser, estratégia de chunking, modelo e dimensão dos embeddings. Reexecutar a mesma fonte com a mesma configuração não deverá duplicar os dados. Mudanças na fonte ou na configuração exigirão uma nova versão do índice.
 - Uma nova versão só substituirá a versão ativa após concluir a extração, a validação dos trechos e a geração e persistência dos embeddings com sucesso. Falhas durante a atualização preservarão a versão ativa anterior. A consulta usará uma única versão ativa, tanto na busca vetorial quanto no fallback textual, evitando misturar políticas ou vetores incompatíveis.
-- Cada evidência preservará página inicial e final, além da seção e da origem. O contrato atual de `PolicyPassage`, que contém apenas `page`, deverá ser ajustado para representar intervalos de páginas. O limite atual de 2.000 caracteres por passagem também deverá ser revisto para comportar unidades completas sem truncamento silencioso.
+- Cada evidência preserva página inicial e final, além da seção, título, versão e origem. `PolicyPassage` usa `page_start` e `page_end` em lugar de `page`. O limite antigo de 2.000 caracteres por passagem foi removido; o retriever limita o conjunto por tokens para preservar unidades completas sem truncamento silencioso.
 - `PolicySearch.limit` representará o máximo de evidências finais, com padrão 5 e máximo 5. O top-k de candidatos será uma configuração interna do retriever, inicialmente 5, independente desse limite de saída.
 - O orçamento aproximado de 2.000 tokens se aplicará ao conjunto de evidências, incluindo títulos e referências. Se uma expansão não couber, será reduzido primeiro o contexto estrutural adicional; se necessário, serão omitidas unidades completas, preservando a ordem de relevância. Uma unidade que exceda sozinha o orçamento deverá ser dividida em blocos coerentes na indexação, sem cortar condições ou exceções arbitrariamente durante a consulta.
+
+A implementação inicial usa pypdf em modo layout para extrair o PDF e reconstruir as tabelas, e nodes LlamaIndex para representar as unidades recuperáveis. O limite inicial de chunk é 1.000 tokens, medidos com `cl100k_base`; essa contagem é uma aproximação operacional, não a tokenização exata do Gemini ou DeepSeek. Um bloco indivisível que exceda esse limite impede a indexação até revisão de sua divisão, em vez de sofrer truncamento automático. As 28 seções do manual atual resultam em 25 chunks; três seções são apenas títulos ancestrais sem texto próprio.
+
+Os embeddings terão inicialmente 768 dimensões, com tarefas `RETRIEVAL_DOCUMENT` e `RETRIEVAL_QUERY` e distância cosseno. Essa dimensão está fixada no schema vetorial; alterá-la exigirá migration e reindexação. O PGVectorStore fará a leitura vetorial, com criação de tabelas desabilitada: Alembic gerencia o schema, e a escrita dos nodes serializados, seções e ativação ocorre na mesma transação SQLAlchemy. Versões anteriores serão mantidas e filtradas das consultas; a política de expurgo poderá ser definida posteriormente.
+
+No Compose, a indexação será executada automaticamente pelo serviço de execução única `index-policies`, após as migrations e em paralelo à ingestão dos CSVs. A API aguardará a conclusão bem-sucedida de ambas as etapas. Essa decisão substitui a indexação exclusivamente manual; o comando `python -m app.rag` continuará disponível para execução isolada. O lifespan da API não fará a indexação. A primeira carga ou uma nova versão exigirá `GOOGLE_API_KEY` válida e acesso ao provedor; sem mudanças na fonte/configuração, o índice existente será reutilizado sem novas chamadas de embeddings. Falhas da etapa impedirão a inicialização da API nessa sequência do Compose.
 
 ### Avaliação E Alternativas De Retrieval
 
