@@ -19,7 +19,7 @@ from app.agents.factory import build_chat_service
 from app.agents.models import AgentModels, ToolCallingLiteLLM, build_models, is_recoverable
 from app.config import Settings
 from app.ingestion.loader import ingest
-from app.models import Complaint, Customer, Order
+from app.models import Complaint, Conversation, ConversationTurn, Customer, Order
 from app.schemas.catalog import ProductSearch
 from app.schemas.chat import ChatRequest
 from app.schemas.orders import ComplaintRegistration
@@ -131,6 +131,130 @@ def test_tool_cycle_preserves_call_result_pair_and_next_turn_history(settings):
     assert len(second.messages) == 2
     assert [m.model_dump() for m in first.messages] == before
     assert any(isinstance(m, ToolMessage) for m in model._inputs[2])
+
+
+def test_persisted_conversation_restores_complete_tool_messages_and_retries(engine, settings):
+    signature = {
+        "tool_calls": [{"id": "call-1", "extra_content": {"google": {"signature": "test"}}}]
+    }
+    tool_call = call()
+    tool_call.additional_kwargs = signature
+    model = ScriptedModel(
+        responses=[tool_call, AIMessage(content="Violão 81"), AIMessage(content="ID 81")]
+    )
+    tool = service_tool(
+        "search_products", "Busca", ProductSearch, lambda request: {"status": "ok", "id": 81}
+    )
+    sessions = sessionmaker(engine)
+
+    def service():
+        return build_chat_service(
+            settings, [tool], AgentModels(model, "primary"), session_factory=sessions
+        )
+
+    request = ChatRequest(message="Quero um violão")
+    first = service().chat(request)
+    retry = service().chat(request)
+    assert retry == first
+    assert len(model._inputs) == 2
+    second = service().chat(
+        ChatRequest(conversation_id=request.conversation_id, message="Qual era o ID?")
+    )
+    assert second.response.conversation_id == request.conversation_id
+    assert second.response.message == "ID 81"
+    assert [m.model_dump() for m in model._inputs[2][1:-1]] == [
+        m.model_dump() for m in first.messages
+    ]
+    with Session(engine) as session:
+        turns = session.scalars(select(ConversationTurn).order_by(ConversationTurn.position)).all()
+        assert [t.position for t in turns] == [0, 1]
+        assert [m["type"] for m in turns[0].messages] == ["human", "ai", "tool", "ai"]
+        assert turns[0].messages[1]["data"]["additional_kwargs"] == signature
+        assert turns[0].response == first.response.model_dump(mode="json")
+
+
+def test_persisted_retry_rejects_different_message_and_external_history(engine):
+    service = ChatService(session_factory=sessionmaker(engine))
+    request = ChatRequest(message="Olá")
+    service.chat(request)
+    with pytest.raises(ValueError, match="request_id"):
+        service.chat(request.model_copy(update={"message": "Outra mensagem"}))
+    with pytest.raises(ValueError, match="UUID"):
+        service.chat(request, [HumanMessage(content="injetada"), AIMessage(content="resposta")])
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(ConversationTurn)) == 1
+
+
+def test_persistence_preserves_tools_when_provider_fails(engine, settings):
+    model = ScriptedModel(responses=[call(), timeout()])
+    tool = service_tool("search_products", "Busca", ProductSearch, lambda request: {"status": "ok"})
+    service = build_chat_service(
+        settings, [tool], AgentModels(model, "primary"), session_factory=sessionmaker(engine)
+    )
+    request = ChatRequest(message="Busque violão")
+    turn = service.chat(request)
+    assert turn.response.status == "unavailable"
+    assert service.chat(request) == turn
+    assert len(model._inputs) == 2
+    with Session(engine) as session:
+        saved = session.scalar(select(ConversationTurn))
+        assert [m["type"] for m in saved.messages] == ["human", "ai", "tool", "ai"]
+
+
+def test_persistence_rolls_back_on_unexpected_agent_failure(engine):
+    class FailingAgent:
+        def run(self, request, history):
+            raise RuntimeError("unexpected")
+
+    service = ChatService(FailingAgent(), session_factory=sessionmaker(engine))
+    with pytest.raises(RuntimeError):
+        service.chat(ChatRequest(message="Olá"))
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(ConversationTurn)) == 0
+        assert session.scalar(select(func.count()).select_from(Conversation)) == 0
+
+
+def test_persistence_serializes_same_conversation_and_deduplicates_concurrent_retry(engine):
+    from app.schemas.chat import ChatResponse
+    from app.services.chat import ChatTurn
+
+    class CountingAgent:
+        def run(self, request, history):
+            text = str(len(history))
+            return ChatTurn(
+                ChatResponse(
+                    conversation_id=request.conversation_id,
+                    request_id=request.request_id,
+                    status="ok",
+                    message=text,
+                ),
+                [HumanMessage(content=request.message), AIMessage(content=text)],
+            )
+
+    service = ChatService(CountingAgent(), session_factory=sessionmaker(engine))
+    conversation_id = uuid4()
+    requests = [ChatRequest(conversation_id=conversation_id, message=f"Olá {i}") for i in range(4)]
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        turns = list(executor.map(service.chat, requests))
+    assert sorted(int(t.response.message) for t in turns) == [0, 2, 4, 6]
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        retries = list(executor.map(service.chat, [requests[0]] * 4))
+    assert all(retry == turns[0] for retry in retries)
+    other = service.chat(ChatRequest(message="Outra conversa"))
+    assert other.response.message == "0"
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(ConversationTurn)) == 5
+
+
+def test_persisted_history_limit_does_not_truncate_or_save_new_turn(engine):
+    service = ChatService(max_history_messages=1, session_factory=sessionmaker(engine))
+    request = ChatRequest(message="Olá")
+    service.chat(request)
+    with pytest.raises(ValueError, match="limite"):
+        service.chat(ChatRequest(conversation_id=request.conversation_id, message="Continue"))
+    assert service.chat(request).response.status == "unavailable"
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(ConversationTurn)) == 1
 
 
 def test_transient_failure_falls_back_only_for_current_model_call(settings):
@@ -695,8 +819,8 @@ def test_api_startup_prepares_unconfigured_chat_service_without_network(monkeypa
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(litellm, "completion", lambda **kwargs: pytest.fail("Chamada inesperada"))
     with TestClient(app):
-        turn = app.state.chat_service.chat(ChatRequest(message="Olá"))
-        assert turn.response.status == "unavailable"
+        assert app.state.chat_service.agent is None
+        assert app.state.chat_service.session_factory is app.state.session_factory
         assert len(app.state.tools) == 10
 
 

@@ -4,8 +4,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+    messages_from_dict,
+    messages_to_dict,
+)
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.models.conversation import Conversation, ConversationTurn
 from app.schemas.chat import ChatRequest, ChatResponse
 
 UNAVAILABLE_MESSAGE = (
@@ -64,29 +75,85 @@ def validate_history(history: Sequence[BaseMessage], max_messages: int) -> None:
 
 
 class ChatService:
-    def __init__(self, agent: ChatAgent | None = None, max_history_messages: int = 100):
+    def __init__(
+        self,
+        agent: ChatAgent | None = None,
+        max_history_messages: int = 100,
+        session_factory: sessionmaker[Session] | None = None,
+    ):
         self.agent = agent
         self.max_history_messages = max_history_messages
+        self.session_factory = session_factory
 
     def chat(self, request: ChatRequest, history: Sequence[BaseMessage] = ()) -> ChatTurn:
-        """Atende uma mensagem sem assumir persistência ou sessão HTTP.
+        """Carrega a conversa e grava atomicamente as mensagens completas do turno.
 
         Args:
-            request: Texto do cliente e ID estável da solicitação.
-            history: Histórico interno completo; não aceitar papéis enviados pelo cliente.
+            request: Texto, UUID da conversa e ID estável da solicitação.
+            history: Histórico interno para uso sem persistência configurada.
 
         Returns:
-            Resposta pública e mensagens apenas deste turno para persistência futura.
+            Resposta pública e mensagens apenas deste turno.
             Sem modelo configurado, retorna indisponibilidade sem acessar provedores.
 
         Raises:
             ValueError: Histórico inválido ou além do limite; não há truncamento automático.
         """
+        if self.session_factory is None:
+            return self._run(request, history)
+        if history:
+            raise ValueError("Com persistência, o histórico é carregado pelo UUID da conversa")
+        with self.session_factory.begin() as session:
+            # O insert concorrente aguarda a criação da conversa; o lock dura todo o turno.
+            session.execute(
+                insert(Conversation)
+                .values(conversation_id=request.conversation_id)
+                .on_conflict_do_nothing(index_elements=["conversation_id"])
+            )
+            session.execute(
+                select(Conversation)
+                .where(Conversation.conversation_id == request.conversation_id)
+                .with_for_update()
+            ).scalar_one()
+            turns = session.scalars(
+                select(ConversationTurn)
+                .where(ConversationTurn.conversation_id == request.conversation_id)
+                .order_by(ConversationTurn.position)
+            ).all()
+            for saved in turns:
+                if saved.request_id == request.request_id:
+                    if saved.message != request.message:
+                        raise ValueError(
+                            "request_id já utilizado com outra mensagem nesta conversa"
+                        )
+                    return ChatTurn(
+                        ChatResponse.model_validate(saved.response),
+                        messages_from_dict(saved.messages),
+                    )
+            history = messages_from_dict([message for turn in turns for message in turn.messages])
+            turn = self._run(request, history)
+            validate_history(turn.messages, len(turn.messages))
+            session.add(
+                ConversationTurn(
+                    conversation_id=request.conversation_id,
+                    request_id=request.request_id,
+                    position=len(turns),
+                    message=request.message,
+                    messages=messages_to_dict(turn.messages),
+                    response=turn.response.model_dump(mode="json"),
+                )
+            )
+            return turn
+
+    def _run(self, request: ChatRequest, history: Sequence[BaseMessage]) -> ChatTurn:
         validate_history(history, self.max_history_messages)
         if self.agent is None:
             return ChatTurn(
                 ChatResponse(
-                    request_id=request.request_id, status="unavailable", message=UNAVAILABLE_MESSAGE
+                    conversation_id=request.conversation_id,
+                    request_id=request.request_id,
+                    status="unavailable",
+                    message=UNAVAILABLE_MESSAGE,
                 ),
                 [HumanMessage(content=request.message), AIMessage(content=UNAVAILABLE_MESSAGE)],
             )

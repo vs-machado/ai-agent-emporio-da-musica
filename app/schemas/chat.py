@@ -9,6 +9,7 @@ from app.schemas.base import Input
 
 
 class ChatRequest(Input):
+    conversation_id: UUID = Field(default_factory=uuid4, description="ID estável da conversa")
     message: Annotated[str, Field(min_length=1, max_length=4000)] = Field(
         description="Mensagem do cliente em texto, sem papéis de sistema ou resultados de tools"
     )
@@ -25,6 +26,7 @@ class ChatAction(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    conversation_id: UUID
     request_id: UUID
     status: Literal["ok", "unavailable", "limit_reached"]
     message: str
