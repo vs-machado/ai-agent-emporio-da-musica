@@ -35,6 +35,9 @@ Para parar o serviço sem apagar os dados, execute `docker compose down`. As cre
 
 A API fica em `http://localhost:8000`, com documentação em `/docs`. O endpoint `/health` executa `SELECT 1` no banco e retorna `{"status":"ok","database":"ok"}`; se a conexão falhar, retorna HTTP 503 sem expor detalhes internos. Essa verificação não confirma se as migrations foram aplicadas; a preparação é responsabilidade dos serviços `migrate` e `ingest`.
 
+A interface Gradio fica em `http://localhost:8000/ui/`, na mesma aplicação e porta.
+Veja [Interface de atendimento](interface-chat.md) para conversas, nova sessão e retries.
+
 `API_PORT` configura a porta da API no host. Dentro do Compose, a API usa o host `db` e a porta `5432`, independentemente de `POSTGRES_HOST` e `POSTGRES_PORT` do host.
 
 Para desenvolvimento sem o container da API:
