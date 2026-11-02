@@ -107,6 +107,9 @@ def build_tools(
             "search_products",
             "Busca instrumentos por nome, categoria, marca no nome e faixa de preço atual. "
             "Busca também especificações, ignora conectivos e aceita singular/plural. "
+            "Todos os filtros são opcionais: consulte sem exigir marca ou orçamento. "
+            "Use query para instrumento/características e category somente para o nome "
+            "da categoria. Exemplo: query='violão eletroacústico', sem category. "
             "Retorna especificações, preço, promoção, status e estoque consultados. "
             "Uma lista vazia não confirma falta de estoque: revise os filtros e amplie a busca. "
             "Para encontrar itens "
@@ -172,6 +175,9 @@ def build_tools(
         (
             "calculate_shipping",
             "Consulta carrinho e destino, sem taxas, limites, modalidades ou prazos fixos. "
+            "Use quando houver um carrinho específico com produtos e quantidades. "
+            "Perguntas gerais sobre condições de frete devem usar search_policy; não exija "
+            "itens do carrinho para consultar ou explicar essas condições. "
             "Recebe o destino por cidade/UF ou por CEP já informado, sem exigir CEP adicional. "
             "A classificação de cobertura é interna, nunca solicitada ao cliente. "
             "Para cobertura local confirmada, consulte search_policy para as condições vigentes. "
