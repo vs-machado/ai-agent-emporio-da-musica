@@ -8,8 +8,12 @@ from app.schemas.base import Identifier, Input, Money, Text
 
 
 class ProductSearch(Input):
-    query: Text | None = Field(default=None, description="Termos do instrumento procurado")
-    category: Text | None = Field(default=None, description="Nome ou parte da categoria")
+    query: Text | None = Field(
+        default=None, description="Termos do instrumento ou especificações, como violão de nylon"
+    )
+    category: Text | None = Field(
+        default=None, description="Nome ou parte da categoria, no singular ou plural"
+    )
     brand: Text | None = Field(default=None, description="Marca a buscar no nome do produto")
     min_price: Money | None = Field(default=None, description="Preço atual mínimo em reais")
     max_price: Money | None = Field(default=None, description="Preço atual máximo em reais")

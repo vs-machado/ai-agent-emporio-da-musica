@@ -64,6 +64,10 @@ class ToolCallingLiteLLM(ChatLiteLLM):
         for original, payload in zip(messages, converted, strict=True):
             if not isinstance(original, AIMessage):
                 continue
+            if payload.get("tool_calls") and self.model.startswith(("gemini/", "vertex_ai/gemini")):
+                # Nesta integração, texto junto de function_call pode levar o Gemini
+                # a encerrar sem resposta após a tool. O transcript permanece intacto.
+                payload["content"] = None
             if original.response_metadata.get("model_name") != self.model:
                 continue
             raw_calls = [
