@@ -539,6 +539,18 @@ def test_litellm_adapter_executes_tool_call_cycle_without_real_provider(monkeypa
     assert "synthetic-secret" not in repr(model)
 
 
+def test_litellm_runtime_dispatch_works_without_real_provider():
+    # Não substitui litellm.completion: valida também seus imports de runtime.
+    model = ToolCallingLiteLLM(
+        model="gemini/gemini-2.5-flash-lite",
+        api_key="synthetic",
+        model_kwargs={"mock_response": "Resposta offline"},
+        max_retries=0,
+    )
+    response = model.invoke([HumanMessage(content="Olá")])
+    assert response.text == "Resposta offline"
+
+
 def test_adapter_does_not_forward_provider_signatures_to_other_model():
     response = AIMessage(
         content="",
