@@ -13,11 +13,14 @@ from app.schemas.clock import CurrentDateTime
 from app.schemas.commerce import PaymentQuote, ShippingQuote
 from app.schemas.orders import ComplaintRegistration, OrderLookup, RefundQuote
 from app.schemas.policies import PolicySearch
+from app.schemas.web import PostalCodeLookup
 from app.services.catalog import CatalogService
 from app.services.clock import ClockService
 from app.services.commerce import CommerceService
+from app.services.errors import ExternalLookupError
 from app.services.orders import OrderService
 from app.services.policies import PolicyRetriever, PolicyService
+from app.services.postal import PostalCodeProvider, PostalCodeService
 
 
 def service_tool(
@@ -47,7 +50,7 @@ def service_tool(
             }
         try:
             return handler(request)
-        except (SQLAlchemyError, TimeoutError, OSError, ValidationError):
+        except (SQLAlchemyError, TimeoutError, OSError, ValidationError, ExternalLookupError):
             return {
                 "status": "unavailable",
                 "message": (
@@ -68,7 +71,10 @@ def service_tool(
 
 
 def build_tools(
-    sessions: sessionmaker[Session], policy_retriever: PolicyRetriever | None = None
+    sessions: sessionmaker[Session],
+    policy_retriever: PolicyRetriever | None = None,
+    *,
+    postal_code_provider: PostalCodeProvider | None = None,
 ) -> list[StructuredTool]:
     """Cria as tools com dependências explícitas, sem inicializar um agente.
 
@@ -78,11 +84,12 @@ def build_tools(
             RAG não estiver configurado; a tool reporta essa indisponibilidade.
 
     Returns:
-        Dez tools com schemas e descrições em português. As operações comerciais
+        Onze tools com schemas e descrições em português. As operações comerciais
         só simulam condições, e o registro de reclamações não notifica a equipe.
     """
     catalog = CatalogService(sessions)
-    commerce = CommerceService(sessions)
+    postal_codes = PostalCodeService(postal_code_provider)
+    commerce = CommerceService(sessions, postal_codes)
     orders = OrderService(sessions)
     policies = PolicyService(policy_retriever)
     clock = ClockService()
@@ -155,10 +162,21 @@ def build_tools(
             commerce.calculate_payment,
         ),
         (
+            "lookup_postal_code",
+            "Consulta gratuitamente o CEP informado pelo cliente no ViaCEP. Retorna cidade, UF "
+            "e endereço. Não informa valor de frete nem comprova cobertura do motoboy. "
+            "Não invente CEP quando a consulta não encontrar o endereço.",
+            PostalCodeLookup,
+            postal_codes.lookup_postal_code,
+        ),
+        (
             "calculate_shipping",
-            "Consulta o carrinho para estimar frete e prazos. Região deve ser confirmada pelo "
-            "cliente, sem inferir cidades metropolitanas. Fora da região local exige cotação, "
-            "sem inventar preços. Não agenda entregas.",
+            "Consulta carrinho e destino, sem taxas, limites, modalidades ou prazos fixos. "
+            "Se houver destination_postal_code, valida o destino no ViaCEP; Campo Grande/MS é "
+            "local e outro estado é externo. Outras cidades de MS exigem confirmar a região. "
+            "Sem CEP, use a região confirmada pelo cliente. Na região local, consulte "
+            "search_policy para as condições vigentes. Fora dela, informe que verificará o valor "
+            "com um funcionário e avisará depois. Não exige peso/dimensões nem agenda retorno.",
             ShippingQuote,
             commerce.calculate_shipping,
         ),

@@ -15,3 +15,7 @@ class ChatHistoryLimitError(ChatHistoryError):
 
 class ChatRequestConflictError(ValueError):
     """O ID do turno já foi utilizado com outra mensagem na conversa."""
+
+
+class ExternalLookupError(RuntimeError):
+    """A fonte externa não pôde fornecer uma resposta válida."""
