@@ -9,10 +9,21 @@ from app.schemas.base import Identifier, Input, Money, Text
 
 class ProductSearch(Input):
     query: Text | None = Field(
-        default=None, description="Termos do instrumento ou especificações, como violão de nylon"
+        default=None,
+        description=(
+            "Termos do instrumento e suas características, como violão de nylon ou violão "
+            "eletroacústico. Use este campo para tipo, material e especificações. "
+            "Opcional; sem filtros, lista o catálogo."
+        ),
     )
     category: Text | None = Field(
-        default=None, description="Nome ou parte da categoria, no singular ou plural"
+        default=None,
+        description=(
+            "Somente nome ou parte da categoria, no singular ou plural, como Violões. "
+            "Busca apenas o nome da categoria, não especificações. Não use violão "
+            "eletroacústico ou instrumentos musicais como categoria; coloque termos "
+            "e características em query. Se não souber a categoria, omita este filtro."
+        ),
     )
     brand: Text | None = Field(default=None, description="Marca a buscar no nome do produto")
     min_price: Money | None = Field(default=None, description="Preço atual mínimo em reais")

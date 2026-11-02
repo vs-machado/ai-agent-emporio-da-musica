@@ -21,12 +21,12 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.errors import ChatHistoryError, ChatHistoryLimitError, ChatRequestConflictError
 
 UNAVAILABLE_MESSAGE = (
-    "Não consegui concluir o atendimento agora. Tente novamente em instantes "
+    "Estamos com problemas técnicos no momento. Tente novamente em instantes "
     "ou entre em contato com a equipe da loja."
 )
 LIMIT_MESSAGE = (
-    "Não consegui concluir a consulta dentro do limite deste atendimento. "
-    "Podemos tentar uma pergunta mais específica ou consultar a equipe da loja."
+    "Estamos com problemas técnicos no momento. Tente novamente em instantes "
+    "ou entre em contato com a equipe da loja."
 )
 
 
