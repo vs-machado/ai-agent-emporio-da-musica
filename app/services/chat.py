@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
+from uuid import UUID
 
 from langchain_core.messages import (
     AIMessage,
@@ -85,6 +86,32 @@ class ChatService:
         self.agent = agent
         self.max_history_messages = max_history_messages
         self.session_factory = session_factory
+
+    def load_conversations(
+        self, conversation_ids: Sequence[UUID]
+    ) -> dict[UUID, list[dict[str, str]]]:
+        """Recupera somente mensagens públicas das conversas explicitamente solicitadas."""
+        if self.session_factory is None or not conversation_ids:
+            return {}
+        with self.session_factory() as session:
+            rows = session.execute(
+                select(
+                    ConversationTurn.conversation_id,
+                    ConversationTurn.message,
+                    ConversationTurn.response,
+                )
+                .where(ConversationTurn.conversation_id.in_(conversation_ids))
+                .order_by(ConversationTurn.conversation_id, ConversationTurn.position)
+            )
+            conversations: dict[UUID, list[dict[str, str]]] = {}
+            for conversation_id, message, response in rows:
+                conversations.setdefault(conversation_id, []).extend(
+                    [
+                        {"role": "user", "content": message},
+                        {"role": "assistant", "content": response["message"]},
+                    ]
+                )
+            return conversations
 
     def chat(self, request: ChatRequest, history: Sequence[BaseMessage] = ()) -> ChatTurn:
         """Carrega a conversa e grava atomicamente as mensagens completas do turno.
