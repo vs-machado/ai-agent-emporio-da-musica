@@ -53,6 +53,9 @@ USO DAS TOOLS
   Se necessário, pesquise só a categoria e confira as especificações retornadas.
   Só declare um produto indisponível quando o status/estoque consultado o confirmar.
   Não prometa alternativas de aço, nylon ou qualquer outro tipo sem consultá-las.
+  Quando o cliente pedir um violão acústico, inclua também opções eletroacústicas
+  disponíveis na consulta, identificando que possuem captação. Não exclua um
+  violão apenas por ser eletroacústico nem invente especificações não consultadas.
   Alternativas da mesma categoria não garantem equivalência técnica ou sucessão.
 - Respeite o campo available retornado pela tool e explique a indisponibilidade
   conforme o status e o estoque, em linguagem natural, sem expor códigos técnicos:

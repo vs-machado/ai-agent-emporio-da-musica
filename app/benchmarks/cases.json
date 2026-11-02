@@ -1,0 +1,269 @@
+{
+  "version": "2026-11-02.4",
+  "source": "29 casos derivados dos 56 turnos revisados do banco, com reformulações, e dois cenários de frete solicitados pelo usuário. CEP 79002-000 confirmado no ViaCEP. Referências verificadas no manual 2.1.",
+  "cases": [
+    {
+      "id": "aberto_agora", "source_turn_id": 15,
+      "question": "voces estao abertos agora", "history": [],
+      "expected_tools": ["search_policy", "get_current_datetime"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "horário de funcionamento"}}, {"name": "get_current_datetime", "args": {}}],
+      "expected_sections": ["2"],
+      "reference": "Horário regular no fuso America/Campo_Grande: segunda a sexta das 09h às 18h, sábado das 09h às 13h, domingos e feriados fechado. Consultar data e hora atuais; não pedir cidade do cliente nem garantir ausência de feriados ou alterações especiais.",
+      "forbidden_patterns": ["qual.*cidade", "seção de ajuda", "seção de.*site"],
+      "required_patterns": [], "catalog": null
+    },
+    {
+      "id": "aberto_hoje", "source_turn_id": 38,
+      "question": "voces estão abertos hoje", "history": [],
+      "expected_tools": ["search_policy", "get_current_datetime"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "horário de funcionamento"}}, {"name": "get_current_datetime", "args": {}}],
+      "expected_sections": ["2"],
+      "reference": "Usar data atual no fuso da loja e explicar expediente regular, sem pedir cidade do cliente. Segunda a sexta 09h–18h, sábado 09h–13h, domingos e feriados fechado; horários especiais precisam de confirmação.",
+      "forbidden_patterns": ["qual.*cidade"], "required_patterns": [], "catalog": null
+    },
+    {
+      "id": "horario_sabado", "source_turn_id": 39,
+      "question": "até que horas voces estao abertos no sabado?", "history": [],
+      "expected_tools": ["search_policy"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "horário de funcionamento sábado"}}],
+      "expected_sections": ["2"],
+      "reference": "A loja e o atendimento WhatsApp funcionam regularmente aos sábados das 09h às 13h. Não é necessário saber a cidade do cliente.",
+      "forbidden_patterns": ["qual.*cidade"], "required_patterns": ["13(?::00|h|\\s*horas)?"], "catalog": null
+    },
+    {
+      "id": "garantia", "source_turn_id": 40,
+      "question": "os produtos tem garantia?", "history": [],
+      "expected_tools": ["search_policy"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "garantia legal fabricante"}}],
+      "expected_sections": ["8.1", "8.2"],
+      "reference": "Garantia legal de 90 dias contra defeitos de fabricação, contados do recebimento. A maioria dos fabricantes oferece garantia própria de 6 meses a 2 anos, com prazo e condições específicos no certificado do produto. Responder diretamente; não existe seção de ajuda.",
+      "forbidden_patterns": ["seção de ajuda"], "required_patterns": ["90|noventa", "recebimento|receber"], "catalog": null
+    },
+    {
+      "id": "exclusoes_garantia", "source_turn_id": 41,
+      "question": "o que a garantia nao cobre?", "history": [],
+      "expected_tools": ["search_policy"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "o que a garantia não cobre"}}],
+      "expected_sections": ["8.3"],
+      "reference": "A garantia não cobre desgaste natural, mau uso, quedas, condições climáticas extremas, modificações ou reparos por terceiros não autorizados e danos estéticos que não afetem a funcionalidade. Não confundir com itens não elegíveis para troca da seção 4.4: venda final, personalizações e boquilhas não são exclusões gerais de garantia nessa seção.",
+      "forbidden_patterns": ["seção de ajuda"], "required_patterns": ["desgaste", "mau uso"], "catalog": null
+    },
+    {
+      "id": "arrependimento", "source_turn_id": 42,
+      "question": "se eu me arrepender da compra posso trocar?", "history": [],
+      "expected_tools": ["search_policy"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "direito de arrependimento compras online"}}],
+      "expected_sections": ["4.1"],
+      "reference": "Para compras online, pode solicitar devolução por arrependimento em até 7 dias corridos após o recebimento, sem justificativa. O manual exige embalagem original, sem sinais de uso e todos os acessórios e manuais; frete de devolução por conta da loja e reembolso na forma original em até 10 dias úteis. Distinguir de troca por preferência e troca por defeito; não aprovar um caso individual sem verificar condições.",
+      "forbidden_patterns": ["arrependimento.{0,80}30 dias", "prazo.{0,30}30 dias"],
+      "required_patterns": ["7\\s*(?:\\(sete\\)\\s*)?dias corridos|sete dias corridos", "recebimento|receber", "online|internet|on-line"], "catalog": null
+    },
+    {
+      "id": "catalogo", "source_turn_id": 44,
+      "question": "quais instrumentos voce tem pra vender", "history": [],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {}}],
+      "expected_sections": [], "reference": null,
+      "forbidden_patterns": [], "required_patterns": [], "catalog": "all"
+    },
+    {
+      "id": "bateria", "source_turn_id": 45,
+      "question": "tem bateria?", "history": [],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "bateria"}}],
+      "expected_sections": [], "reference": null,
+      "forbidden_patterns": [], "required_patterns": [], "catalog": "bateria"
+    },
+    {
+      "id": "bateria_contextual", "source_turn_id": 46,
+      "question": "Quais opções voce tem?",
+      "history": [{"role": "user", "content": "tem bateria?"}, {"role": "assistant", "content": "Você gostaria de ver as opções disponíveis?"}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "bateria"}}],
+      "expected_sections": [], "reference": null,
+      "forbidden_patterns": [], "required_patterns": [], "catalog": "bateria"
+    },
+    {
+      "id": "promocoes", "source_turn_id": 56,
+      "question": "tem algum instrumento em promocao?", "history": [],
+      "expected_tools": ["get_active_promotions"],
+      "reference_calls": [{"name": "get_active_promotions", "args": {}}],
+      "expected_sections": [], "reference": null,
+      "forbidden_patterns": [], "required_patterns": [], "catalog": "promotions"
+    },
+    {
+      "id": "endereco_horario", "source_turn_id": 1,
+      "question": "onde fica a loja? que horas voces abrem? que hora fecha?",
+      "source_question": "Consulte as políticas da loja e me informe o endereço e o horário de funcionamento.",
+      "expected_tools": ["search_policy"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "endereço horário de funcionamento"}}],
+      "expected_sections": ["1.2", "2"],
+      "reference": "Rua 14 de Maio, 3200, Centro, Campo Grande, MS. Atendimento presencial e WhatsApp: segunda a sexta das 09h às 18h, sábado das 09h às 13h; domingos e feriados fechado. Datas especiais podem ter alterações.",
+      "required_patterns": ["3200|3\\.200", "Campo Grande", "13", "18"],
+      "forbidden_patterns": ["qual.*cidade", "seção de ajuda"]
+    },
+    {
+      "id": "vende_violao", "source_turn_id": 4,
+      "question": "voces vendem violao",
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
+      "catalog": "violao"
+    },
+    {
+      "id": "modelos_violao_contextual", "source_turn_id": 5,
+      "question": "quais modelos voce tem",
+      "history": [{"role": "user", "content": "voces vendem violao"}, {"role": "assistant", "content": "Vou consultar os modelos disponíveis."}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
+      "catalog": "violao"
+    },
+    {
+      "id": "nylon_barato_iniciante", "source_turn_id": 7,
+      "question": "Queria um barato, pra aprender a tocar. acho que o de nylon vai ser melhor pra isso",
+      "history": [{"role": "user", "content": "Quero comprar um violão para começar a tocar."}, {"role": "assistant", "content": "Você prefere cordas de nylon ou aço?"}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão nylon"}}],
+      "catalog": "nylon"
+    },
+    {
+      "id": "alternativas_aco", "source_turn_id": 13,
+      "question": "E quais de aço estão disponíveis?",
+      "history": [{"role": "user", "content": "Estou procurando um violão e comparando nylon e aço."}, {"role": "assistant", "content": "Posso consultar as opções de cada tipo."}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão aço"}}],
+      "catalog": "aco"
+    },
+    {
+      "id": "disponibilidade_violao_contextual", "source_turn_id": 17,
+      "question": "o que você tem disponível?",
+      "history": [{"role": "user", "content": "to querendo comprar um violao"}, {"role": "assistant", "content": "Vou buscar os modelos para você."}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
+      "catalog": "violao"
+    },
+    {
+      "id": "desconto_contextual", "source_turn_id": 19,
+      "question": "tem desconto?",
+      "history": [{"role": "user", "content": "Quero comprar um violão de nylon para aprender."}, {"role": "assistant", "content": "Posso consultar as opções e condições."}],
+      "expected_tools": ["search_policy"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "desconto PIX regras de promoções"}}],
+      "expected_sections": ["3", "6.2"],
+      "reference": "PIX oferece 5% sobre preço de tabela, apenas nos itens sem promoção. Promoções e descontos não são cumulativos; confirmar ofertas ativas no sistema antes de apresentar uma oferta específica.",
+      "required_patterns": ["5\\s*%|cinco por cento", "não.*cumul|não.*acumul|não.*aplica.*promo|sem promo"]
+    },
+    {
+      "id": "frete_caldas_novas", "source_turn_id": 22,
+      "question": "Quanto fica o frete pra caldas novas",
+      "expected_tools": [], "reference_calls": [],
+      "reference": "Para Caldas Novas, fora da região metropolitana de Campo Grande, informar que verificará o valor do frete com um funcionário e avisará depois. Não inventar valor, não afirmar contato já feito nem exigir CEP para essa orientação.",
+      "required_patterns": ["funcionário|equipe|atendente", "verific|consult|confirm"],
+      "forbidden_patterns": ["R\\$\\s*\\d", "preciso.*CEP|informe.*CEP|qual.*CEP"]
+    },
+    {
+      "id": "rastreamento_sem_identificadores", "source_turn_id": 25,
+      "question": "eu gostaria de saber o codigo de rastreamento do meu pedido",
+      "expected_tools": [], "reference_calls": [],
+      "reference": "Solicitar número do pedido e e-mail cadastrado antes de consultar rastreamento. Não inventar identificadores, não pesquisar pedidos sem os dois dados e não fornecer um código de rastreamento fictício.",
+      "required_patterns": ["número.*pedido|numero.*pedido", "e-?mail"],
+      "forbidden_patterns": ["BR[A-Z0-9]{9}BR"]
+    },
+    {
+      "id": "modelos_teclado_contextual", "source_turn_id": 31,
+      "question": "quais voce tem?",
+      "history": [{"role": "user", "content": "to pensando em comprar um teclado tambem"}, {"role": "assistant", "content": "Vou consultar o catálogo."}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "teclado"}}],
+      "catalog": "teclado"
+    },
+    {
+      "id": "teclado_orcamento_2000", "source_turn_id": 32,
+      "question": "queria gastar no máximo 2000 reais",
+      "history": [{"role": "user", "content": "Quero ver teclados disponíveis."}, {"role": "assistant", "content": "Qual é a sua faixa de orçamento?"}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "teclado", "max_price": 2000}}],
+      "catalog": "teclado_2000"
+    },
+    {
+      "id": "frete_dourados", "source_turn_id": 34,
+      "question": "legal. quanto fica o frete pra dourados",
+      "expected_tools": [], "reference_calls": [],
+      "reference": "Dourados é destino externo à região metropolitana de Campo Grande. Orientar que verificará o valor com um funcionário e avisará depois, sem inventar tarifa ou solicitar CEP, peso ou dimensões como condição para essa orientação.",
+      "required_patterns": ["funcionário|equipe|atendente", "verific|consult|confirm"],
+      "forbidden_patterns": ["R\\$\\s*\\d", "preciso.*CEP|informe.*CEP|qual.*CEP"]
+    },
+    {
+      "id": "bateria_reconsiderar_negativa", "source_turn_id": 47,
+      "question": "nao tem bateria?",
+      "history": [{"role": "user", "content": "Quais baterias vocês têm?"}, {"role": "assistant", "content": "Não encontrei modelos na busca anterior."}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "bateria"}}],
+      "catalog": "bateria"
+    },
+    {
+      "id": "mudar_de_bateria_para_violao", "source_turn_id": 48,
+      "question": "e violao, o que voce tem?",
+      "history": [{"role": "user", "content": "Estava procurando uma bateria."}, {"role": "assistant", "content": "Posso consultar outros instrumentos se preferir."}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
+      "catalog": "violao"
+    },
+    {
+      "id": "violao_acustico", "source_turn_id": 49,
+      "question": "queria um violao acustico",
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão acústico"}}],
+      "catalog": "violao_acustico"
+    },
+    {
+      "id": "violao_eletroacustico", "source_turn_id": 50,
+      "question": "e violao eletroacustico",
+      "history": [{"role": "user", "content": "Estou comparando violões acústicos e eletroacústicos."}, {"role": "assistant", "content": "Posso consultar os dois tipos."}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão eletroacústico"}}],
+      "catalog": "violao"
+    },
+    {
+      "id": "recuperar_busca_sem_resultados", "source_turn_id": 51,
+      "question": "nao tem nada?",
+      "history": [{"role": "user", "content": "Quero um violão eletroacústico."}, {"role": "assistant", "content": "A consulta anterior não encontrou correspondências."}],
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
+      "catalog": "violao"
+    },
+    {
+      "id": "catalogo_hoje", "source_turn_id": 52,
+      "question": "quais produtos voce tem hoje?",
+      "source_question": "e o que voce tem hoje",
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {}}],
+      "catalog": "all"
+    },
+    {
+      "id": "modelos_flauta", "source_turn_id": 54,
+      "question": "o que tem de flauta",
+      "expected_tools": ["search_products"],
+      "reference_calls": [{"name": "search_products", "args": {"query": "flauta"}}],
+      "catalog": "flauta"
+    },
+    {
+      "id": "frete_campo_grande", "origin": "user_requested",
+      "question": "Quanto fica o frete para Campo Grande?",
+      "expected_tools": ["search_policy"],
+      "reference_calls": [{"name": "search_policy", "args": {"query": "frete entregas Campo Grande"}}],
+      "expected_sections": ["5.1"],
+      "reference": "Para Campo Grande, o manual prevê frete grátis acima de R$ 500 e taxa de R$ 35 abaixo de R$ 500, com entrega em 1 a 3 dias úteis. Apresentar as condições e pedir o valor do pedido ou os produtos para confirmar qual se aplica, sem exigir CEP pois a cidade já foi informada. Exatamente R$ 500 é uma lacuna do manual e exige confirmação.",
+      "required_patterns": ["500", "35"],
+      "forbidden_patterns": ["preciso.*CEP|informe.*CEP|qual.*CEP"]
+    },
+    {
+      "id": "frete_cep_campo_grande", "origin": "user_requested",
+      "question": "Meu CEP é 79002-000. Quanto fica o frete para entregar aqui?",
+      "expected_tools": ["lookup_postal_code", "search_policy"],
+      "reference_calls": [{"name": "lookup_postal_code", "args": {"postal_code": "79002-000"}}, {"name": "search_policy", "args": {"query": "frete entregas Campo Grande"}}],
+      "expected_sections": ["5.1"],
+      "reference": "O CEP 79002-000 corresponde ao Centro de Campo Grande/MS, na Avenida Calógeras, conforme ViaCEP. A consulta de CEP identifica o destino, não calcula frete. Consultar a política local: grátis acima de R$ 500 e R$ 35 abaixo de R$ 500; confirmar o valor do pedido ou produtos antes de dar um valor específico. Exatamente R$ 500 exige confirmação. Não pedir novamente cidade ou CEP já identificados.",
+      "required_patterns": ["Campo Grande", "500", "35"],
+      "forbidden_patterns": ["qual.*cidade|informe.*cidade|qual.*CEP|informe.*CEP"]
+    }
+  ]
+}
