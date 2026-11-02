@@ -38,7 +38,7 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 - `ChatService` recebe `ChatRequest` com mensagem, `conversation_id` e `request_id` UUID, e um agente injetável. Retorna `ChatTurn`, com resposta pública e as novas mensagens internas do turno, incluindo chamadas e resultados de tools. API e interface consomem a mesma fachada.
 - Com persistência configurada, o serviço carrega o histórico pelo UUID e rejeita histórico manual. Sem persistência, o chamador interno pode fornecer turnos completos. A validação preserva pares de chamadas/resultados sem truncamento silencioso. Repetir conversa, solicitação e texto devolve o turno salvo, sem executar modelo ou tools novamente.
 - `POST /chat` retorna apenas `ChatResponse`, com execução síncrona na thread pool do FastAPI. Turnos concluídos usam HTTP 200, incluindo `unavailable` e `limit_reached`; conflitos de solicitação usam 409, limite de histórico 422, histórico inválido 500 e falhas de persistência 503. O contrato está em `docs/api-chat.md`. O Gradio mostra somente mensagem do cliente e resposta final, com callbacks síncronos nos workers e controles de envio, nova conversa e retry; seu uso está em `docs/interface-chat.md`.
-- O lifespan cria `app.state.chat_service` sem chamar provedores. Sem `GOOGLE_API_KEY`, o serviço fica disponível para composição, mas retorna atendimento `unavailable` sem inferência nem respostas comerciais simuladas.
+- O lifespan cria `app.state.chat_service` sem chamar provedores. Sem a chave do provedor primário (`OPENROUTER_API_KEY` no padrão DeepSeek), o serviço fica disponível para composição, mas retorna atendimento `unavailable` sem inferência nem respostas comerciais simuladas.
 - O prompt em português fica em `app/agents/prompt.py`. Ele orienta uso das fontes, escopo, ambiguidades e limitações comerciais. A aderência do modelo real ainda precisará ser avaliada; o prompt não substitui autenticação ou validações determinísticas dos serviços.
 - A apresentação do atendimento usará nome já informado ou contexto confiável, empatia e encerramento cordial, sem exigir identificação apenas para personalizar. O prompt explicita estados dos produtos, preço original/desconto/preço promocional de ofertas ativas enquanto durarem os estoques e consultas complementares para exceções. Totais sem frete e preços atuais não serão apresentados como total entregue ou preço histórico de compra; exclusão de dados dependerá do canal humano, sem simular execução.
 - Cada turno permite inicialmente seis rodadas de modelo e doze chamadas de tools, com até 2.048 tokens de saída por chamada e timeout de 20 segundos por tentativa de provedor. Histórico de entrada é limitado a cem mensagens. Os parâmetros são configuráveis por `CHAT_*`; não há streaming nesta etapa.
@@ -48,9 +48,9 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 ## Modelos E Fallback
 
 - LiteLLM é a camada de acesso aos provedores, integrada ao LangChain por `langchain-litellm`. O roteamento de fallback ocorre em middleware por chamada de modelo.
-- Modelo primário: Gemini 2.5 Flash-Lite.
-- Modelo de fallback: DeepSeek V4.1 Flash, acessado via OpenRouter.
-- `OPENROUTER_API_KEY` é opcional. Ausente ou vazia, o agente usa apenas o Gemini, sem configurar uma rota de fallback DeepSeek. Essa chave não é necessária para indexação nem retrieval das políticas.
+- Modelo primário: DeepSeek V4.1 Flash, acessado via OpenRouter, após melhor comportamento observado no atendimento em comparação com Gemini Flash-Lite.
+- Fallback desativado por padrão: `CHAT_FALLBACK_MODEL` ausente, vazio ou só com espaços não cria adaptador nem rota de fallback.
+- `OPENROUTER_API_KEY` é necessária para o primário padrão. `GOOGLE_API_KEY` continua sendo usada na indexação e nos embeddings das políticas. Para habilitar fallback, configure um modelo diferente do primário e a chave correspondente ao provedor (`openrouter/` usa OpenRouter; Gemini usa Google).
 - O fallback ocorrerá somente em falhas técnicas recuperáveis, como timeout, rate limit e erros 5xx do provedor.
 - O fallback não será acionado para substituir uma resposta válida nem no meio de uma chamada de tool sem preservar o estado do turno.
 
@@ -60,9 +60,11 @@ O adaptador local preserva metadados e assinaturas das chamadas ao reenviar mens
 
 ### Justificativa Dos Modelos
 
-O Gemini 2.5 Flash-Lite foi escolhido como modelo primário por combinar baixo custo, latência adequada a uma conversa e suporte a chamadas estruturadas de tools. A escolha também permite usar o ecossistema Gemini para geração de respostas e embeddings, reduzindo a quantidade de integrações necessárias.
+O Gemini 2.5 Flash-Lite foi escolhido inicialmente por combinar baixo custo, latência adequada a uma conversa e suporte a chamadas estruturadas de tools. Após desempenho insatisfatório observado no atendimento, o Gemini 3.5 Flash-Lite passou a ser o primário em avaliação. A troca preserva a integração Gemini para geração de respostas e embeddings; sua qualidade deve ser verificada nos mesmos cenários antes de concluir que houve melhora.
 
-O DeepSeek V4.1 Flash, via OpenRouter, foi escolhido como fallback por oferecer suporte a tool calling e preço competitivo. O uso de um segundo provedor de inferência ajuda a manter o atendimento disponível quando houver timeout, limitação de taxa ou indisponibilidade no provedor primário. O LiteLLM centraliza a configuração e o roteamento entre os modelos.
+Em 02/11/2026, uma amostra `live --no-judge` com seis casos (sábado, garantia, arrependimento, catálogo geral, bateria contextual e promoções) completou sem falhas técnicas e sem fallback. Isso não representa aprovação funcional: no catálogo geral, o modelo prometeu consultar sem chamar a tool; em bateria contextual, chamou `search_products` sem filtro e afirmou indevidamente que a loja não vende baterias. O relatório local está em `benchmark-results/20261102T195026Z-d2dc4656/report.json` (não versionado). A amostra não calcula métricas com juiz e não estabelece superioridade sobre o modelo anterior.
+
+O DeepSeek V4.1 Flash, via OpenRouter, passou a ser o primário pelo melhor comportamento observado nas conversas de atendimento, além do suporte a tool calling e preço competitivo. O fallback fica opcional e desativado por padrão; quando configurado, pode manter o atendimento em falhas recuperáveis do primário. O LiteLLM centraliza a integração entre os modelos.
 
 Os dois modelos devem ser avaliados nos cenários do projeto, especialmente quanto à qualidade das respostas em português e à seleção e execução correta das tools. Preços, disponibilidade e comportamento de tool calling podem mudar e devem ser verificados antes da entrega.
 

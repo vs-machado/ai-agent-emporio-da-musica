@@ -10,7 +10,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
 from app.schemas.catalog import ProductDetails, ProductSearch
-from app.schemas.commerce import PaymentQuote
+from app.schemas.commerce import PaymentQuote, ShippingQuote
 from app.schemas.policies import PolicyPassage
 from app.tools import build_tools
 from app.tools.registry import service_tool
@@ -75,6 +75,27 @@ def test_search_rejects_invalid_filters(payload):
 def test_payment_rejects_invalid_cart(payload):
     with pytest.raises(ValidationError):
         PaymentQuote.model_validate({"payment_method": "credit", **payload})
+
+
+@pytest.mark.parametrize(
+    "destination",
+    [{"destination_city": "Campo Grande"}, {"destination_state": "MS"}],
+)
+def test_shipping_rejects_incomplete_city_state_without_postal_code(destination):
+    with pytest.raises(ValidationError, match="destination_city e destination_state juntos"):
+        ShippingQuote.model_validate({"items": [{"product_id": 118}], **destination})
+
+
+@pytest.mark.parametrize(
+    "destination",
+    [
+        {"destination_city": "Campo Grande", "destination_state": "MS"},
+        {"destination_postal_code": "79002-000"},
+        {"destination_city": "Campo Grande", "destination_postal_code": "79002-000"},
+    ],
+)
+def test_shipping_accepts_city_state_or_postal_code(destination):
+    ShippingQuote.model_validate({"items": [{"product_id": 118}], **destination})
 
 
 def test_invalid_tool_arguments_do_not_expose_input_or_access_database():
