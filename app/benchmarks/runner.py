@@ -115,6 +115,7 @@ def catalog_oracle(catalog, case):
             "bateria": "bateria",
             "violao": "violão",
             "violao_acustico": "violão acústico",
+            "violao_sete_cordas": "violão 7 cordas",
             "nylon": "violão nylon",
             "aco": "violão aço",
             "teclado": "teclado",
