@@ -27,6 +27,7 @@ def test_tools_expose_schemas_for_tool_calling():
         "calculate_refund",
         "calculate_payment",
         "calculate_shipping",
+        "lookup_postal_code",
         "register_complaint",
         "search_policy",
     }
