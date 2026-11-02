@@ -150,9 +150,8 @@ class CommerceService:
         """Consulta carrinho/destino e orienta a próxima etapa do atendimento.
 
         Args:
-            request: Carrinho, região confirmada e CEP opcional. O CEP permite
-                identificar Campo Grande/MS ou outro estado; outras cidades de MS
-                continuam exigindo confirmação da região de entrega.
+            request: Carrinho e destino por cidade/UF ou CEP, sem exigir classificação
+                geográfica do cliente. Cobertura incerta é verificada com um funcionário.
 
         Returns:
             Contexto comercial sem tarifas, limites, modalidades ou prazos fixos.
@@ -169,7 +168,12 @@ class CommerceService:
             "shipping_brl": None,
             "price_basis": "Subtotal com promoções, antes de desconto por forma de pagamento",
         }
-        region = request.destination_region
+        if request.destination_city:
+            result["destination"] = {
+                "city": request.destination_city,
+                "state": request.destination_state,
+            }
+            result["destination_source"] = "customer"
         if request.destination_postal_code:
             lookup = self.postal_codes.lookup_postal_code(
                 PostalCodeLookup(postal_code=request.destination_postal_code)
@@ -179,27 +183,18 @@ class CommerceService:
             address = lookup["address"]
             result["destination"] = address
             result["destination_source"] = lookup["source"]
-            if region == "campo_grande_metropolitan" and address["state"] != "MS":
-                return {
-                    **result,
-                    "status": "requires_confirmation",
-                    "message": (
-                        "O CEP é de outro estado e diverge da região local informada. "
-                        "Confira o destino."
-                    ),
-                }
-            if region == "unknown":
-                if address["city"] == "Campo Grande" and address["state"] == "MS":
-                    region = "campo_grande_metropolitan"
-                elif address["state"] != "MS":
-                    region = "other"
-        if region == "unknown":
+        if "destination" not in result:
             return {
                 **result,
                 "status": "requires_information",
-                "message": "Confirme se o destino está na região metropolitana de Campo Grande.",
+                "message": (
+                    "Peça somente cidade e estado se o destino ainda não tiver sido informado. "
+                    "Se já souber o destino, verifique o frete com um funcionário. "
+                    "Não peça ao cliente que classifique a região de entrega."
+                ),
             }
-        if region == "other":
+        address = result["destination"]
+        if not (address["city"].casefold() == "campo grande" and address["state"] == "MS"):
             return {
                 **result,
                 "status": "requires_quote",

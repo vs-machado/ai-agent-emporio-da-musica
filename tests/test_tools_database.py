@@ -164,7 +164,11 @@ def test_local_shipping_consults_policy_without_hardcoded_rates_or_thresholds(to
     with Session(engine) as session, session.begin():
         session.get(Product, 81).price_brl = Decimal(total)
     result = tools["calculate_shipping"].invoke(
-        {"items": [{"product_id": 81}], "destination_region": "campo_grande_metropolitan"}
+        {
+            "items": [{"product_id": 81}],
+            "destination_city": "Campo Grande",
+            "destination_state": "MS",
+        }
     )
     assert result["status"] == "requires_policy"
     assert result["policy_lookup_required"] is True
@@ -174,10 +178,13 @@ def test_local_shipping_consults_policy_without_hardcoded_rates_or_thresholds(to
     assert "business_days" not in result
 
 
-def test_shipping_requires_region_or_external_quote(tools):
+def test_shipping_requests_destination_not_customer_region_classification(tools):
     args = {"items": [{"product_id": 81}]}
-    assert tools["calculate_shipping"].invoke(args)["status"] == "requires_information"
-    result = tools["calculate_shipping"].invoke({**args, "destination_region": "other"})
+    missing_destination = tools["calculate_shipping"].invoke(args)
+    assert missing_destination["status"] == "requires_information"
+    assert "cidade e estado" in missing_destination["message"]
+    assert "Se já souber o destino" in missing_destination["message"]
+    result = tools["calculate_shipping"].invoke({**args, "destination_city": "Outra Cidade"})
     assert result["status"] == "requires_quote"
     assert result["shipping_brl"] is None
     assert "methods" not in result
