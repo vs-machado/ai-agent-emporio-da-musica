@@ -125,7 +125,7 @@ O bot deve responder de forma cordial a temas que a loja não atende.
 
 - Catálogo, promoções, pedidos e reclamações são atendidos por tools estruturadas. Pagamento é calculado a partir dos produtos e promoções consultados no banco. A tool de frete fornece carrinho/destino como contexto, sem tarifas fixas; as condições locais vêm do manual e destinos externos recebem orientação de verificação com funcionário.
 - Informações institucionais, horário, trocas, devoluções, garantia, privacidade e escopo são apoiadas por `search_policy`, com RAG LlamaIndex/pgvector e fallback textual. A consulta exige um índice ativo do manual; sem retrieval disponível, a tool informa indisponibilidade.
-- Número do pedido e e-mail correspondente são a verificação inicial do protótipo, não autenticação nem prova de titularidade. A consulta não deve expor cadastro completo do cliente nem distinguir pedido inexistente de e-mail incorreto na resposta de falha.
+- A conta autenticada deve estar vinculada ao cliente dono do pedido. E-mail é uma conferência opcional, não credencial. A consulta não expõe cadastro completo nem distingue pedido inexistente, alheio ou e-mail incorreto na resposta de falha.
 - Uma reclamação registrada no banco não equivale a encaminhamento efetivo. Enquanto não houver integração com a equipe, informar essa limitação, sem prometer retorno operacional em 24 horas úteis.
 - O manual descreve frete acima e abaixo de R$ 500,00, mas não exatamente nesse valor. Também não esclarece a exceção de parcelamento abaixo de R$ 50,00. Solicitar confirmação da equipe para esses casos.
 - A previsão de entrega não comprova recebimento. As tools não aprovam automaticamente trocas, devoluções ou garantias com base nessa previsão.

@@ -13,6 +13,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     conversation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.user_id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

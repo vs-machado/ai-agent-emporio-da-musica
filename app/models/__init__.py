@@ -12,6 +12,7 @@ from app.models.policy_section import PolicySection
 from app.models.policy_vector import PolicyVector
 from app.models.product import Product
 from app.models.promotion import Promotion
+from app.models.user import UISession, User
 
 __all__ = [
     "Base",
@@ -27,4 +28,6 @@ __all__ = [
     "PolicyVector",
     "Product",
     "Promotion",
+    "User",
+    "UISession",
 ]

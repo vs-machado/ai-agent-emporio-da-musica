@@ -9,14 +9,21 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.ingestion.loader import ingest
-from app.models import Complaint, Product
+from app.models import Complaint, Order, Product
+from app.services.auth import Principal, current_principal
 from app.tools import build_tools
 
 
 @pytest.fixture
 def tools(engine):
     ingest(engine)
-    return {tool.name: tool for tool in build_tools(sessionmaker(bind=engine))}
+    with Session(engine) as session:
+        customer_id = session.get(Order, 1).customer_id
+    token = current_principal.set(Principal(uuid4(), customer_id, "demo@example.test"))
+    try:
+        yield {tool.name: tool for tool in build_tools(sessionmaker(bind=engine))}
+    finally:
+        current_principal.reset(token)
 
 
 def test_catalog_filters_accents_brand_current_price_and_pagination(tools):
@@ -208,7 +215,7 @@ def test_quotes_reject_unavailable_or_insufficient_stock(tools, product_id, quan
     assert tools["calculate_shipping"].invoke(cart)["status"] == "unavailable_product"
 
 
-def test_order_lookup_requires_matching_email_and_minimizes_output(tools):
+def test_order_lookup_requires_matching_email_and_minimizes_output(tools, engine):
     good = tools["get_order_status"].invoke({"order_id": 1, "email": "PEDRO.OLIVEIRA@JMAIL.COM"})
     assert good["status"] == "ok"
     assert good["order_status"] == "delivered"
@@ -220,9 +227,15 @@ def test_order_lookup_requires_matching_email_and_minimizes_output(tools):
         {"order_id": 999, "email": "other@example.com"}
     )
     assert wrong_email == missing_order
-    waiting = tools["get_order_status"].invoke(
-        {"order_id": 9, "email": "juliana.almeida@hayoo.com.br"}
-    )
+    with Session(engine) as session:
+        customer_id = session.get(Order, 9).customer_id
+    token = current_principal.set(Principal(uuid4(), customer_id, "demo@example.test"))
+    try:
+        waiting = tools["get_order_status"].invoke(
+            {"order_id": 9, "email": "juliana.almeida@hayoo.com.br"}
+        )
+    finally:
+        current_principal.reset(token)
     assert waiting["tracking_code"] is None
     assert waiting["estimated_delivery"] is None
 

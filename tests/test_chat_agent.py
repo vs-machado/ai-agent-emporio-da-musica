@@ -1014,6 +1014,7 @@ def test_agent_obtains_refund_reference_from_real_order_without_financial_operat
     ingest(engine)
     with Session(engine) as session:
         email = session.scalar(select(Customer.email).join(Order).where(Order.order_id == 3))
+        customer_id = session.get(Order, 3).customer_id
     model = ScriptedModel(
         responses=[
             call(
@@ -1024,7 +1025,12 @@ def test_agent_obtains_refund_reference_from_real_order_without_financial_operat
         ]
     )
     service = make_service(settings, model, build_tools(sessionmaker(engine)))
-    turn = service.chat(ChatRequest(message="Quero devolver uma das duas unidades do pedido 3."))
+    from app.services.auth import Principal
+
+    turn = service.chat(
+        ChatRequest(message="Quero devolver uma das duas unidades do pedido 3."),
+        user=Principal(uuid4(), customer_id, email),
+    )
     result = json.loads(next(m.content for m in turn.messages if isinstance(m, ToolMessage)))
     assert result["refund_amount_brl"] == "1725.00"
     assert result["amount_kind"] == "proportional_estimate"

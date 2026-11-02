@@ -2,12 +2,14 @@
 
 `POST /chat` atende uma mensagem usando o `ChatService` configurado pela aplicação.
 O banco deve estar preparado com `alembic upgrade head`. A documentação interativa
-fica em `/docs`.
+fica em `/docs`. Faça login conforme [Autenticação](autenticacao.md) antes das
+chamadas abaixo e mantenha o cookie em `/tmp/emporio-cookies`.
 
 ## Iniciar uma conversa
 
 ```bash
 curl -X POST http://localhost:8000/chat \
+  -b /tmp/emporio-cookies -H 'Origin: http://localhost:8000' \
   -H 'Content-Type: application/json' \
   -d '{"message": "Quais violões estão disponíveis até R$ 1.000?"}'
 ```
@@ -21,7 +23,7 @@ O corpo aceita somente:
 | `request_id` | Não | UUID do turno; gerado quando omitido |
 
 Não aceita histórico, papéis, chamadas ou resultados de tools enviados pelo cliente.
-O histórico é recuperado do PostgreSQL pelo UUID da conversa.
+O histórico é recuperado do PostgreSQL pelo UUID e pelo usuário autenticado.
 
 Exemplo de formato da resposta (conteúdo ilustrativo):
 
@@ -48,6 +50,7 @@ um novo `request_id`, ou omiti-lo para que seja gerado.
 
 ```bash
 curl -X POST http://localhost:8000/chat \
+  -b /tmp/emporio-cookies -H 'Origin: http://localhost:8000' \
   -H 'Content-Type: application/json' \
   -d '{"message": "E no PIX?", "conversation_id": "77902f8e-06c4-46eb-b9ce-9eb91ca0337d", "request_id": "207c8dbf-a68e-4b6a-a6e4-11ff79154420"}'
 ```
@@ -62,6 +65,9 @@ Uma conversa com UUID ainda inexistente é criada no primeiro turno concluído.
 | HTTP | Significado |
 |---|---|
 | `200` | Turno concluído e salvo; consulte `status` no corpo |
+| `401` | Login ausente, inválido ou expirado |
+| `403` | Origem ausente ou diferente da API |
+| `404` | Conversa não disponível para essa conta |
 | `409` | `request_id` já utilizado com outra mensagem na mesma conversa |
 | `422` | Entrada inválida ou histórico acima de `CHAT_HISTORY_MAX_MESSAGES` |
 | `500` | Histórico interno inválido |
@@ -79,5 +85,6 @@ Erros tratados retornam `{"detail": "mensagem pública"}`. Erros de validação 
 entrada usam o formato padrão do FastAPI, com `detail` como lista.
 
 O endpoint é síncrono e executado na thread pool do FastAPI. Turnos da mesma
-conversa são serializados no banco. Nesta etapa, o endpoint não implementa
-autenticação nem controle de titularidade da conversa; o UUID é um identificador.
+conversa são serializados no banco. A conta autenticada precisa ser dona da
+conversa; conhecer o UUID não concede acesso. `GET /conversations` lista somente
+as mensagens públicas das conversas da conta atual.

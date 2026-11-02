@@ -2,10 +2,12 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.routes.auth import CurrentUser
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.chat import ConversationAccessError
 from app.services.errors import ChatHistoryError, ChatHistoryLimitError, ChatRequestConflictError
 
 logger = logging.getLogger(__name__)
@@ -16,13 +18,16 @@ router = APIRouter(tags=["Atendimento"])
     "/chat",
     response_model=ChatResponse,
     responses={
+        401: {"description": "Login obrigatório"},
+        403: {"description": "Origem da solicitação inválida"},
+        404: {"description": "Conversa não disponível para essa conta"},
         409: {"description": "ID do turno já utilizado com outra mensagem"},
         422: {"description": "Entrada inválida ou limite do histórico excedido"},
         500: {"description": "Histórico interno inválido"},
         503: {"description": "Persistência do atendimento indisponível"},
     },
 )
-def chat(payload: ChatRequest, request: Request) -> ChatResponse:
+def chat(payload: ChatRequest, request: Request, user: CurrentUser) -> ChatResponse:
     """Executa um turno e retorna apenas sua resposta pública.
 
     Sem conversation_id, inicia uma conversa. Reutilize o UUID para continuá-la
@@ -31,7 +36,9 @@ def chat(payload: ChatRequest, request: Request) -> ChatResponse:
     A função síncrona roda na thread pool do FastAPI, fora do event loop.
     """
     try:
-        return request.app.state.chat_service.chat(payload).response
+        return request.app.state.chat_service.chat(payload, user=user).response
+    except ConversationAccessError as exc:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada.") from exc
     except ChatRequestConflictError as exc:
         raise HTTPException(
             status_code=409,
@@ -54,3 +61,9 @@ def chat(payload: ChatRequest, request: Request) -> ChatResponse:
             status_code=503,
             detail="O atendimento está temporariamente indisponível. Tente novamente em instantes.",
         ) from exc
+
+
+@router.get("/conversations")
+def conversations(request: Request, user: CurrentUser, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return request.app.state.chat_service.load_conversations(user=user)

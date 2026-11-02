@@ -12,8 +12,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import ConversationTurn
+from app.routes.auth import get_current_user
 from app.routes.chat import router
 from app.schemas.chat import ChatResponse
+from app.services.auth import Principal
 from app.services.chat import ChatService, ChatTurn
 from app.services.errors import ChatHistoryError, ChatHistoryLimitError, ChatRequestConflictError
 
@@ -22,6 +24,7 @@ from app.services.errors import ChatHistoryError, ChatHistoryLimitError, ChatReq
 def api():
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: Principal(uuid4(), None, "a@example.test")
     app.state.chat_service = ChatService()
     with TestClient(app) as client:
         yield app, client
@@ -119,7 +122,7 @@ def test_chat_maps_errors_without_exposing_internal_details(api, error, code):
     app, client = api
 
     class FailingService:
-        def chat(self, request):
+        def chat(self, request, *, user=None):
             raise error
 
     app.state.chat_service = FailingService()
@@ -131,6 +134,14 @@ def test_chat_maps_errors_without_exposing_internal_details(api, error, code):
 
 def test_chat_persists_resumes_and_deduplicates_turns(api, engine):
     app, client = api
+    from app.models import User
+
+    with Session(engine) as session, session.begin():
+        user = User(email="a@example.test", password_hash="unused")
+        session.add(user)
+        session.flush()
+        principal = Principal(user.user_id, None, user.email)
+    app.dependency_overrides[get_current_user] = lambda: principal
 
     class Agent:
         def run(self, request, history):

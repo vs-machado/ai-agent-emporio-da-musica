@@ -1,7 +1,7 @@
 """Consulta de pedidos, simulação de reembolso e registro de reclamações."""
 
 from decimal import Decimal
-from uuid import uuid4
+from uuid import uuid4, uuid5
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import Complaint, Customer, Order, OrderItem, Product
 from app.schemas.orders import ComplaintRegistration, OrderLookup, RefundQuote
+from app.services.auth import current_principal
 from app.services.catalog import money
 
 ORDER_NOT_FOUND = {
@@ -21,24 +22,30 @@ class OrderService:
     def __init__(self, sessions: sessionmaker[Session]):
         self.sessions = sessions
 
-    def _verified_order(self, session: Session, order_id: int, email: str) -> Order | None:
-        """Exige correspondência de ID e e-mail; não comprova controle da conta."""
+    def _verified_order(self, session: Session, order_id: int, email: str | None) -> Order | None:
+        """Identidade vem do backend; conhecer número e e-mail não concede acesso."""
+        principal = current_principal.get()
+        if principal is None or principal.customer_id is None:
+            return None
         return session.scalar(
             select(Order)
             .join(Customer)
-            .where(Order.order_id == order_id, func.lower(Customer.email) == email.casefold())
+            .where(
+                Order.order_id == order_id,
+                Order.customer_id == principal.customer_id,
+                func.lower(Customer.email) == email.casefold() if email else True,
+            )
         )
 
     def get_order_status(self, request: OrderLookup) -> dict:
-        """Consulta pedido mediante correspondência de número e e-mail cadastrado.
+        """Consulta pedido pertencente ao cliente autenticado no contexto do turno.
 
         Args:
             request: Dados fornecidos pelo cliente, não inferidos pelo agente.
 
         Returns:
-            Dados mínimos do pedido, sem cadastro pessoal ou preço histórico
-            inferido. Falhas não distinguem pedido inexistente de e-mail errado.
-            Essa verificação do protótipo não substitui autenticação real.
+            Dados mínimos, sem cadastro pessoal ou preço histórico inferido.
+            Falhas não distinguem pedido alheio, inexistente ou e-mail errado.
         """
         with self.sessions() as session:
             order = self._verified_order(session, request.order_id, request.email)
@@ -201,6 +208,10 @@ class OrderService:
             O registro não implica notificação ou acompanhamento pela equipe.
         """
         email = request.contact_email.casefold()
+        principal = current_principal.get()
+        request_id = (
+            uuid5(principal.user_id, str(request.request_id)) if principal else request.request_id
+        )
         with self.sessions() as session, session.begin():
             if (
                 request.order_id is not None
@@ -211,7 +222,7 @@ class OrderService:
                 insert(Complaint)
                 .values(
                     complaint_id=uuid4(),
-                    request_id=request.request_id,
+                    request_id=request_id,
                     contact_email=email,
                     message=request.message,
                     order_id=request.order_id,
@@ -220,9 +231,7 @@ class OrderService:
                 .on_conflict_do_nothing(index_elements=[Complaint.request_id])
             )
             session.execute(statement)
-            complaint = session.scalar(
-                select(Complaint).where(Complaint.request_id == request.request_id)
-            )
+            complaint = session.scalar(select(Complaint).where(Complaint.request_id == request_id))
             if (complaint.contact_email, complaint.message, complaint.order_id) != (
                 email,
                 request.message,
