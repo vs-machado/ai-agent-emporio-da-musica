@@ -44,11 +44,23 @@ class PaymentQuote(Cart):
 
 class ShippingQuote(Cart):
     destination_city: Text | None = Field(
-        default=None, description="Cidade de destino já informada pelo cliente; não exige CEP"
+        default=None,
+        description="Cidade de destino; sem CEP, deve ser informada junto com destination_state",
     )
     destination_state: Annotated[str, Field(pattern=r"^[A-Z]{2}$")] | None = Field(
-        default=None, description="UF do destino, quando disponível"
+        default=None,
+        description="UF do destino. Obrigatória junto com a cidade quando não houver CEP",
     )
     destination_postal_code: PostalCode | None = Field(
         default=None, description="CEP do destino informado pelo cliente, consultado no ViaCEP"
     )
+
+    @model_validator(mode="after")
+    def validate_destination(self):
+        if self.destination_postal_code is None and bool(self.destination_city) != bool(
+            self.destination_state
+        ):
+            raise ValueError(
+                "Sem destination_postal_code, informe destination_city e destination_state juntos"
+            )
+        return self

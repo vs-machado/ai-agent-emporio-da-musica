@@ -135,15 +135,19 @@ def build_models(settings: Settings) -> AgentModels | None:
         **common,
     )
     fallback = None
-    if (
-        settings.openrouter_api_key is not None
-        and settings.chat_fallback_model != settings.chat_primary_model
-    ):
-        fallback = ToolCallingLiteLLM(
-            model=settings.chat_fallback_model,
-            api_key=settings.openrouter_api_key.get_secret_value(),
-            **common,
+    fallback_name = settings.chat_fallback_model
+    if fallback_name and fallback_name != settings.chat_primary_model:
+        fallback_key = (
+            settings.openrouter_api_key
+            if fallback_name.startswith("openrouter/")
+            else settings.google_api_key
         )
+        if fallback_key is not None:
+            fallback = ToolCallingLiteLLM(
+                model=fallback_name,
+                api_key=fallback_key.get_secret_value(),
+                **common,
+            )
     return AgentModels(
         primary,
         settings.chat_primary_model,

@@ -112,8 +112,13 @@ def snapshot(engine, settings):
             else settings.google_api_key is not None
         ),
         "fallback_enabled": (
-            settings.openrouter_api_key is not None
+            settings.chat_fallback_model is not None
             and settings.chat_fallback_model != settings.chat_primary_model
+            and (
+                settings.openrouter_api_key is not None
+                if settings.chat_fallback_model.startswith("openrouter/")
+                else settings.google_api_key is not None
+            )
         ),
     }
 

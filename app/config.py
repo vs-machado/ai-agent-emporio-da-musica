@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     google_api_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
-    chat_primary_model: str = "gemini/gemini-2.5-flash-lite"
-    chat_fallback_model: str = "openrouter/deepseek/deepseek-v4.1-flash"
+    chat_primary_model: str = "openrouter/deepseek/deepseek-v4.1-flash"
+    chat_fallback_model: str | None = None
     chat_model_timeout: float = Field(default=20, gt=0, le=120)
     chat_max_output_tokens: int = Field(default=2048, ge=128, le=8192)
     chat_max_model_calls: int = Field(default=6, ge=1, le=20)
@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     @field_validator("google_api_key", "openrouter_api_key", mode="before")
     @classmethod
     def normalize_optional_key(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @field_validator("chat_fallback_model", mode="before")
+    @classmethod
+    def normalize_optional_fallback(cls, value):
         if isinstance(value, str):
             return value.strip() or None
         return value
