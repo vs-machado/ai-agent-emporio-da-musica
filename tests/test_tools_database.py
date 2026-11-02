@@ -159,22 +159,19 @@ def test_combined_payment_requires_strict_threshold_and_confirmation(
     assert result["status"] == ("requires_confirmation" if eligible else "not_allowed")
 
 
-@pytest.mark.parametrize(
-    ("total", "cost", "status"),
-    [
-        ("499.99", "35.00", "ok"),
-        ("500.00", None, "requires_confirmation"),
-        ("500.01", "0.00", "ok"),
-    ],
-)
-def test_local_shipping_boundaries(tools, engine, total, cost, status):
+@pytest.mark.parametrize("total", ["499.99", "500.00", "500.01"])
+def test_local_shipping_consults_policy_without_hardcoded_rates_or_thresholds(tools, engine, total):
     with Session(engine) as session, session.begin():
         session.get(Product, 81).price_brl = Decimal(total)
     result = tools["calculate_shipping"].invoke(
         {"items": [{"product_id": 81}], "destination_region": "campo_grande_metropolitan"}
     )
-    assert result["status"] == status
-    assert result["shipping_brl"] == cost
+    assert result["status"] == "requires_policy"
+    assert result["policy_lookup_required"] is True
+    assert result["subtotal_brl"] == total
+    assert result["shipping_brl"] is None
+    assert "methods" not in result
+    assert "business_days" not in result
 
 
 def test_shipping_requires_region_or_external_quote(tools):
@@ -183,7 +180,13 @@ def test_shipping_requires_region_or_external_quote(tools):
     result = tools["calculate_shipping"].invoke({**args, "destination_region": "other"})
     assert result["status"] == "requires_quote"
     assert result["shipping_brl"] is None
-    assert {method["name"] for method in result["methods"]} == {"PAC", "SEDEX", "Jadlog"}
+    assert "methods" not in result
+    assert "business_days" not in result
+    assert result["staff_quote_required"] is True
+    assert result["staff_contacted"] is False
+    assert result["follow_up_scheduled"] is False
+    assert "funcionário" in result["message"]
+    assert "te informar depois" in result["message"]
 
 
 @pytest.mark.parametrize("product_id,quantity", [(96, 1), (130, 1), (136, 1), (81, 13)])

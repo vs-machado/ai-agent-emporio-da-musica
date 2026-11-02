@@ -37,7 +37,8 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
 | `get_order_status` | 5, 6, 7, 9 | Pedido e rastreio após conferir ID e e-mail; não aprova trocas ou garantias |
 | `calculate_refund` | 6 | Total registrado para devolução integral ou estimativa proporcional de unidades iguais, sempre sujeita à confirmação |
 | `calculate_payment` | 3, 4 | Carrinho consultado, PIX não cumulativo, crédito, débito, boleto e elegibilidade de combinação |
-| `calculate_shipping` | 5 | Regra local, prazos estimados ou necessidade de informação/cotação |
+| `calculate_shipping` | 5 | Consulta carrinho/destino; orienta consultar o manual local ou verificar o frete com funcionário |
+| `lookup_postal_code` | 5 | Consulta ViaCEP para endereço, cidade e UF, sem chave |
 | `register_complaint` | 8, 9 | Protocolo persistente e idempotência, sem afirmar encaminhamento operacional |
 | `search_policy` | 1, 3–10 | Recuperação LlamaIndex/pgvector do manual, expansão estrutural e fallback textual |
 
@@ -72,11 +73,20 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
 - A exceção abaixo de R$ 50,00 no parcelamento em até 3x retorna
   `requires_confirmation`. Pagamento combinado acima de R$ 2.000,00 também
   exige confirmação de distribuição e descontos; não há cálculo automático da divisão.
-- A simulação de frete usa o subtotal com promoções, antes do desconto por
-  pagamento. Essa é uma convenção do protótipo a confirmar com a equipe.
-  Exatamente R$ 500,00 exige confirmação, pois não há regra explícita no manual.
-- A região de entrega precisa ser confirmada pelo cliente. Fora da região local,
-  nenhum valor é calculado sem CEP, peso, dimensões e integração de cotação.
+- A consulta de frete fornece o subtotal com promoções como contexto, sem calcular
+  tarifa. Taxas, limites, modalidades e prazos não são duplicados no código: para
+  a região local, o agente consulta `search_policy` e usa o manual vigente.
+- `calculate_shipping` aceita `destination_postal_code`, com ou sem hífen. Consulta
+  o ViaCEP; Campo Grande/MS é local e outro estado é externo. Outras cidades de MS
+  continuam exigindo confirmação da região; não há lista de cobertura metropolitana.
+  Sem CEP, usa a região confirmada pelo cliente. CEP inexistente interrompe o cálculo,
+  e CEP de outro estado em conflito com região local exige confirmação.
+- Fora da região metropolitana, o atendimento informa que verificará o valor com
+  um funcionário e avisará ao cliente depois. Não lista modalidades/prazos fixos,
+  não exige peso/dimensões e não promete prazo de retorno. A tool retorna
+  `staff_quote_required=true`, sem afirmar contato ou agendamento concluídos.
+  Pesquisa de medidas e eventual tabela regional ficam pendentes.
+  Veja [Consultas externas](consultas-externas.md).
 - ID e e-mail são a verificação inicial de pedidos, não autenticação real.
   E-mail errado e pedido inexistente têm a mesma resposta. Cadastro de clientes,
   notas internas e preços unitários históricos não são retornados.

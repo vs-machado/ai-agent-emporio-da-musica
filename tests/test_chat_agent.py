@@ -751,6 +751,52 @@ def test_agent_consults_real_catalog_and_payment_service(engine, settings):
     assert turn.response.status == "ok"
 
 
+@pytest.mark.parametrize(
+    ("policy_text", "version"),
+    [
+        ("Frete local de R$ 42,50. Prazo de 4 dias corridos.", "3.0"),
+        ("Frete local de R$ 49,00. Prazo de 2 dias úteis.", "3.1"),
+    ],
+)
+def test_local_shipping_receives_current_policy_instead_of_fixed_rates(
+    engine, settings, policy_text, version
+):
+    ingest(engine)
+
+    class ShippingPolicy:
+        def search(self, query, limit):
+            return [
+                PolicyPassage(
+                    text=policy_text,
+                    source="manual.pdf",
+                    section="5.1",
+                    title="Frete local",
+                    page_start=4,
+                    page_end=4,
+                    document_version=version,
+                )
+            ]
+
+    model = ScriptedModel(
+        responses=[
+            call(
+                "calculate_shipping",
+                {"items": [{"product_id": 83}], "destination_region": "campo_grande_metropolitan"},
+            ),
+            call("search_policy", {"query": "Condições de frete local"}, call_id="policy"),
+            AIMessage(content=policy_text),
+        ]
+    )
+    service = make_service(settings, model, build_tools(sessionmaker(engine), ShippingPolicy()))
+    turn = service.chat(ChatRequest(message="Qual o frete local do produto 83?"))
+    results = [json.loads(m.content) for m in turn.messages if isinstance(m, ToolMessage)]
+    assert results[0]["status"] == "requires_policy"
+    assert results[0]["shipping_brl"] is None
+    assert results[1]["passages"][0]["text"] == policy_text
+    assert results[1]["passages"][0]["document_version"] == version
+    assert policy_text in model._inputs[2][-1].content
+
+
 def test_agent_retry_and_fallback_keep_one_real_complaint(engine, settings):
     model = ScriptedModel(
         responses=[
@@ -859,7 +905,7 @@ def test_api_startup_prepares_unconfigured_chat_service_without_network(monkeypa
     with TestClient(app):
         assert app.state.chat_service.agent is None
         assert app.state.chat_service.session_factory is app.state.session_factory
-        assert len(app.state.tools) == 10
+        assert len(app.state.tools) == 11
 
 
 def test_agent_can_combine_current_store_time_and_policy_without_api_keys(settings):

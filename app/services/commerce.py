@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import Category, Product
 from app.schemas.commerce import Cart, PaymentQuote, ShippingQuote
+from app.schemas.web import PostalCodeLookup
 from app.services.catalog import active_promotions, current_price, money, product_data
+from app.services.postal import PostalCodeService
 
 
 def quote_cart(session: Session, request: Cart) -> dict:
@@ -74,8 +76,11 @@ def installment_schedule(total: Decimal, count: int) -> list[str]:
 
 
 class CommerceService:
-    def __init__(self, sessions: sessionmaker[Session]):
+    def __init__(
+        self, sessions: sessionmaker[Session], postal_codes: PostalCodeService | None = None
+    ):
         self.sessions = sessions
+        self.postal_codes = postal_codes if postal_codes is not None else PostalCodeService()
 
     def calculate_payment(self, request: PaymentQuote) -> dict:
         """Simula pagamento sem aceitar preços ou descontos fornecidos pelo modelo.
@@ -142,16 +147,17 @@ class CommerceService:
         return result
 
     def calculate_shipping(self, request: ShippingQuote) -> dict:
-        """Estima frete local a partir do subtotal atual, sem desconto de pagamento.
+        """Consulta carrinho/destino e orienta a próxima etapa do atendimento.
 
         Args:
-            request: Carrinho e região confirmada pelo cliente; não infere a
-                região metropolitana a partir de CEP ou nome de outra cidade.
+            request: Carrinho, região confirmada e CEP opcional. O CEP permite
+                identificar Campo Grande/MS ou outro estado; outras cidades de MS
+                continuam exigindo confirmação da região de entrega.
 
         Returns:
-            Frete e prazo em dias úteis quando definidos pela política. Para
-            outras regiões, retorna modalidades e necessidade de cotação, pois
-            não há integração com transportadoras, pesos ou dimensões na fonte.
+            Contexto comercial sem tarifas, limites, modalidades ou prazos fixos.
+            Condições locais são recuperadas por search_policy; fora da região
+            metropolitana, a orientação é verificar o valor com um funcionário.
         """
         with self.sessions() as session:
             cart = quote_cart(session, request)
@@ -162,42 +168,57 @@ class CommerceService:
             "subtotal_brl": cart["subtotal_brl"],
             "shipping_brl": None,
             "price_basis": "Subtotal com promoções, antes de desconto por forma de pagamento",
-            "policy_source": "Manual, seções 5.1 e 5.2",
         }
-        if request.destination_region == "unknown":
+        region = request.destination_region
+        if request.destination_postal_code:
+            lookup = self.postal_codes.lookup_postal_code(
+                PostalCodeLookup(postal_code=request.destination_postal_code)
+            )
+            if lookup["status"] != "ok":
+                return {**result, **lookup}
+            address = lookup["address"]
+            result["destination"] = address
+            result["destination_source"] = lookup["source"]
+            if region == "campo_grande_metropolitan" and address["state"] != "MS":
+                return {
+                    **result,
+                    "status": "requires_confirmation",
+                    "message": (
+                        "O CEP é de outro estado e diverge da região local informada. "
+                        "Confira o destino."
+                    ),
+                }
+            if region == "unknown":
+                if address["city"] == "Campo Grande" and address["state"] == "MS":
+                    region = "campo_grande_metropolitan"
+                elif address["state"] != "MS":
+                    region = "other"
+        if region == "unknown":
             return {
                 **result,
                 "status": "requires_information",
                 "message": "Confirme se o destino está na região metropolitana de Campo Grande.",
             }
-        if request.destination_region == "other":
+        if region == "other":
             return {
                 **result,
                 "status": "requires_quote",
-                "methods": [
-                    {"name": "PAC", "business_days": [5, 12]},
-                    {"name": "SEDEX", "business_days": [2, 5]},
-                    {"name": "Jadlog", "business_days": [3, 8]},
-                ],
+                "staff_quote_required": True,
+                "staff_contacted": False,
+                "follow_up_scheduled": False,
                 "message": (
-                    "Cotação depende de CEP, peso e dimensões. Instrumentos de grande porte "
-                    "podem exigir cotação individual; não há integração com transportadoras "
-                    "neste protótipo."
-                ),
-            }
-        total = Decimal(cart["subtotal_brl"])
-        if total == 500:
-            return {
-                **result,
-                "status": "requires_confirmation",
-                "message": (
-                    "O manual não define frete para exatamente R$ 500,00. Confirmar com a equipe."
+                    "Vou verificar com um funcionário quanto fica o frete para o seu destino "
+                    "e te informar depois."
                 ),
             }
         return {
             **result,
-            "shipping_brl": "0.00" if total > 500 else "35.00",
-            "method": "Motoboy próprio",
-            "business_days": [1, 3],
-            "message": "Prazo estimado; haverá contato telefônico antes da entrega.",
+            "status": "requires_policy",
+            "policy_lookup_required": True,
+            "message": (
+                "Consulte search_policy para as condições de frete da região metropolitana "
+                "de Campo Grande no manual vigente. Use o subtotal consultado como contexto, "
+                "sem assumir taxas, limites de gratuidade, modalidades ou prazos antigos. "
+                "Se a política não esclarecer o caso, verifique o valor com um funcionário."
+            ),
         }

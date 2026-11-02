@@ -17,7 +17,7 @@ LiteLLM e tools estruturadas. O RAG continua separado, atrás da tool `search_po
 | `app/agents/runner.py` | Agente padrão, fallback, limites e idempotência das reclamações |
 | `app/agents/prompt.py` | Instruções de atendimento em português |
 
-O lifespan da API prepara `app.state.chat_service` com as dez tools, sem chamar
+O lifespan da API prepara `app.state.chat_service` com as onze tools, sem chamar
 provedores. Sem chave Google, o serviço retorna `unavailable`; isso permite
 inicializar e testar a aplicação sem inventar respostas de atendimento.
 
@@ -25,6 +25,8 @@ O endpoint `POST /chat` usa esse serviço e retorna somente `ChatResponse`.
 Contrato, exemplos e códigos HTTP estão em [API de chat](api-chat.md).
 O Gradio está disponível em `/ui/` e usa o mesmo serviço, conforme
 [Interface de atendimento](interface-chat.md).
+O uso do ViaCEP e o fluxo de atendimento de frete estão descritos em
+[Consultas externas](consultas-externas.md).
 
 O prompt orienta o uso natural do nome quando já informado, empatia nas reclamações
 e encerramento cordial. Também explicita a interpretação de disponibilidade/status,
