@@ -1,31 +1,184 @@
 <!doctype html>
 <html lang="pt-BR">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Empório da Música — Entrar</title>
+<meta name="color-scheme" content="light dark">
+<title>HarmonIA — Empório da Música</title>
 <style>
-body {font: 16px system-ui; background: #f5f6fa; color: #243447; margin: 0;}
-main {max-width: 420px; margin: 8vh auto; padding: 2rem; background: white; border-radius: 16px;}
-label, input, button {display: block; box-sizing: border-box; width: 100%; margin-top: 1rem;}
-input, button {padding: .8rem; font: inherit; border: 1px solid #aab; border-radius: 8px;}
-button {cursor: pointer; background: #194d65; color: white;}
-#status {min-height: 3em;} a {color: #194d65;}
-.password-hint {position: fixed; right: 1rem; bottom: 1rem; max-width: calc(100vw - 2rem); box-sizing: border-box; padding: .75rem 1rem; background: white; border: 1px solid #dde1e7; border-radius: 8px; font-size: .85rem;}
+:root {
+  color-scheme: light dark;
+  --background: #fff;
+  --surface: #fafafa;
+  --input: #fff;
+  --border: #e4e4e7;
+  --text: #27272a;
+  --muted: #71717a;
+  --accent: #f97316;
+  --accent-hover: #ea580c;
+  --accent-text: #0f0f11;
+  --accent-soft: #fff7ed;
+  --accent-ink: #9a3412;
+  --secondary: #f4f4f5;
+  --secondary-hover: #e4e4e7;
+  --focus: #3b82f6;
+  --error: #b91c1c;
+  --shadow: 0 12px 40px rgb(24 24 27 / 5%);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f0f11;
+    --surface: #18181b;
+    --input: #27272a;
+    --border: #3f3f46;
+    --text: #f4f4f5;
+    --muted: #bbbbc2;
+    --accent-hover: #fb923c;
+    --accent-soft: #2c1b12;
+    --accent-ink: #fdba74;
+    --secondary: #27272a;
+    --secondary-hover: #3f3f46;
+    --error: #fca5a5;
+    --shadow: 0 12px 40px rgb(0 0 0 / 15%);
+  }
+}
+* {box-sizing: border-box;}
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 40px 24px 112px;
+  font: 16px/1.5 "Source Sans Pro", ui-sans-serif, system-ui, sans-serif;
+  background: var(--background);
+  color: var(--text);
+}
+main {
+  width: 100%;
+  max-width: 440px;
+  padding: 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.brand {text-align: center;}
+.music-logo {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 18px;
+}
+.music-logo svg {width: 40px; height: 40px;}
+h1 {margin: 0; font-size: 1.5rem; line-height: 1.3; letter-spacing: -.03em;}
+.subtitle {margin: 8px 0 0; color: var(--muted); font-size: .9rem;}
+.assistant {
+  margin: 24px 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  text-align: center;
+  font-size: .9rem;
+}
+.assistant strong {color: var(--text); font-weight: 600;}
+.field + .field {margin-top: 18px;}
+label {display: block; margin-bottom: 6px; font-size: .9rem; font-weight: 600;}
+.field-hint {color: var(--muted); font-size: .8rem; font-weight: 400;}
+input, button {display: block; width: 100%; font: inherit; border-radius: 8px;}
+input {
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--input);
+  color: var(--text);
+}
+input::placeholder {color: var(--muted); opacity: .8;}
+input:focus-visible, button:focus-visible {outline: 2px solid var(--focus); outline-offset: 3px;}
+.actions {display: grid; gap: 10px; margin-top: 24px;}
+button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+button:hover {background: var(--accent-hover);}
+#register {background: var(--secondary); border-color: var(--border); color: var(--text);}
+#register:hover {background: var(--secondary-hover);}
+button:disabled {opacity: .55; cursor: wait;}
+#status {margin: 0; color: var(--muted); font-size: .9rem; overflow-wrap: anywhere;}
+#status:not(:empty) {margin-top: 18px;}
+#status[data-kind="error"] {color: var(--error);}
+.password-hint {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 48px);
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: .8rem;
+}
+.password-hint svg {flex-shrink: 0; width: 20px; height: 20px; color: var(--accent);}
+.password-hint p {margin: 0;}
+.password-hint strong {color: var(--text); font-weight: 600;}
+.password-hint code {color: var(--accent-ink); background: var(--accent-soft); padding: 2px 6px; border-radius: 4px;}
+@media (max-width: 600px), (max-height: 760px) {
+  body {display: flex; flex-direction: column; justify-content: center; gap: 24px; padding: 24px 16px;}
+  main {padding: 28px 24px;}
+  .password-hint {position: static; max-width: 440px; width: 100%; justify-content: center;}
+}
 </style>
+</head>
+<body>
 <main>
+<header class="brand">
+<div class="music-logo" aria-hidden="true">
+<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M19 33V13l20-5v20M19 20l20-5" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="13" cy="34" rx="6" ry="4.5" fill="currentColor" transform="rotate(-18 13 34)"/>
+  <ellipse cx="33" cy="29" rx="6" ry="4.5" fill="currentColor" transform="rotate(-18 33 29)"/>
+  <path d="M5 15v6m5-9v12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".5"/>
+</svg>
+</div>
 <h1>Empório da Música</h1>
-<p>Área de atendimento ao consumidor</p>
+<p class="subtitle">Área de atendimento ao consumidor</p>
+</header>
+<p class="assistant">Seu atendimento com a <strong>HarmonIA</strong>.</p>
 <form id="account">
+<div class="field">
 <label for="email">E-mail</label>
-<input id="email" type="email" autocomplete="username" maxlength="254" required>
-<label for="password">Senha (10 a 128 caracteres)</label>
-<input id="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required>
+<input id="email" name="email" type="email" autocomplete="username" placeholder="voce@exemplo.com" maxlength="254" required>
+</div>
+<div class="field">
+<label for="password">Senha <span class="field-hint">(10 a 128 caracteres)</span></label>
+<input id="password" name="password" type="password" autocomplete="current-password" placeholder="Sua senha" minlength="10" maxlength="128" required>
+</div>
+<div class="actions">
 <button type="submit">Entrar</button>
 <button id="register" type="button">Criar conta</button>
+</div>
 </form>
 <p id="status" role="status" aria-live="polite"></p>
 </main>
-<aside class="password-hint">Usuários já cadastrados: senha padrão <strong>senha12345</strong></aside>
+<aside class="password-hint" aria-label="Senha para usuários já cadastrados">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+  <circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1" stroke-linecap="round"/>
+</svg>
+<p><strong>Já é cadastrado?</strong><br>Senha padrão: <code>senha12345</code></p>
+</aside>
 <script>
 const form = document.querySelector('#account');
 const status = document.querySelector('#status');
@@ -33,6 +186,8 @@ async function submit(action) {
   if (!form.reportValidity()) return;
   const buttons = form.querySelectorAll('button');
   buttons.forEach(b => b.disabled = true);
+  status.textContent = action === 'login' ? 'Entrando…' : 'Criando conta…';
+  status.dataset.kind = '';
   try {
     const response = await fetch('/auth/' + action, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -40,12 +195,17 @@ async function submit(action) {
     });
     const body = await response.json();
     if (response.ok && action === 'login') { window.location.assign('/ui/'); return; }
+    status.dataset.kind = response.ok ? 'success' : 'error';
     status.textContent = response.ok ? body.message :
       (typeof body.detail === 'string' ? body.detail : 'Confira o e-mail e a senha informados.');
-  } catch { status.textContent = 'Não foi possível conectar. Tente novamente.'; }
+  } catch {
+    status.dataset.kind = 'error';
+    status.textContent = 'Não foi possível conectar. Tente novamente.';
+  }
   finally { buttons.forEach(b => b.disabled = false); }
 }
 form.addEventListener('submit', event => {event.preventDefault(); submit('login');});
 document.querySelector('#register').addEventListener('click', () => submit('register'));
 </script>
+</body>
 </html>
