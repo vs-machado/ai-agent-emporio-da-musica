@@ -8,10 +8,13 @@ O endpoint `POST /chat`, `/docs` e `/health` continuam disponíveis.
 
 1. Digite a mensagem e clique em **Enviar** ou pressione Enter.
 2. Aguarde a resposta; os controles ficam desabilitados durante o atendimento.
-3. Continue enviando mensagens na mesma conversa ou clique em **Nova conversa**.
+3. Continue enviando mensagens na mesma conversa ou clique em **+ Nova conversa**
+   na barra lateral.
+4. Selecione qualquer conversa da lista lateral para rever as mensagens e continuar
+   de onde parou, sem atualizar a página.
 
 O UUID da conversa aparece em um campo somente leitura. Cada sessão de navegador
-mantém seu próprio UUID, mensagens visuais e eventual solicitação pendente.
+mantém suas conversas, a seleção atual e eventuais solicitações pendentes.
 Cada envio novo recebe um `request_id` novo.
 
 Os callbacks usam o mesmo `app.state.chat_service` que a API, sem uma chamada HTTP
@@ -40,10 +43,25 @@ executar em paralelo; o serviço serializa turnos da mesma conversa no banco.
 
 ## Estado da interface
 
-**Nova conversa** troca o UUID e limpa apenas o estado visual; os turnos anteriores
-permanecem no banco. Atualizar a página ou abrir outra sessão inicia uma nova
-conversa. A retomada visual de conversas anteriores por UUID ainda não está
-implementada.
+**+ Nova conversa** abre um atendimento com outro UUID e preserva os anteriores na
+lista lateral. Os títulos usam o início da primeira mensagem e um trecho do UUID.
+Uma conversa nova ainda vazia é reutilizada ao clicar novamente no botão.
+
+A lista de UUIDs e a conversa selecionada ficam no `localStorage` deste navegador
+por `gr.BrowserState`, com chave estável entre reinícios da aplicação. Ao atualizar
+a página, a interface recupera do PostgreSQL somente os textos públicos dessas
+conversas. Mensagens e resultados de tools não são armazenados no `BrowserState`.
+Outro navegador ou armazenamento local apagado não recupera essa lista automaticamente.
+
+Para retomar uma conversa anterior à implementação ou aberta em outro navegador,
+expanda **Retomar conversa pelo ID**, informe o UUID e clique em **Abrir conversa**.
+Ela será adicionada à lista local. A interface não lista globalmente as conversas
+do banco. A leitura do histórico não executa novamente o agente ou as tools.
+
+Durante o atendimento, criação e troca de conversa ficam desabilitadas. Uma mensagem
+pendente de retry permanece associada à sua conversa ao alternar entre atendimentos
+na mesma sessão; retomar essa conversa permite usar **Tentar novamente** com o mesmo
+`request_id`. A pendência em memória não é preservada ao recarregar a página.
 
 A interface é de demonstração, sem autenticação ou controle de titularidade.
 Não usa links públicos de compartilhamento do Gradio e mantém a coleta de
@@ -56,6 +74,7 @@ uv run pytest tests/test_chat_ui.py
 ```
 
 Os testes verificam a montagem HTTP e o lifespan do FastAPI, processamento de
-eventos do Gradio, isolamento de sessões, respostas públicas, nova conversa,
-validação de entrada e controles durante a execução. Com `TEST_DATABASE_URL`,
-também verificam retomada de contexto e retry após perda de uma resposta já salva.
+eventos do Gradio, isolamento de sessões, respostas públicas, criação e alternância
+de conversas, validação de entrada e controles durante a execução. Com
+`TEST_DATABASE_URL`, também verificam restauração após recarregar, abertura por UUID,
+retomada de contexto e retry após alternância e perda de uma resposta já salva.
