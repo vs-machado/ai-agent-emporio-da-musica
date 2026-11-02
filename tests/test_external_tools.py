@@ -97,17 +97,17 @@ def test_external_failure_is_sanitized_at_tool_boundary():
 
 
 @pytest.mark.parametrize(
-    ("city", "state", "region", "status", "shipping"),
+    ("city", "state", "status", "shipping"),
     [
-        ("Campo Grande", "MS", "unknown", "requires_policy", None),
-        ("São Paulo", "SP", "unknown", "requires_quote", None),
-        ("Campo Grande", "AL", "unknown", "requires_quote", None),
-        ("Outra Cidade", "MS", "unknown", "requires_information", None),
-        ("São Paulo", "SP", "campo_grande_metropolitan", "requires_confirmation", None),
+        ("Campo Grande", "MS", "requires_policy", None),
+        ("São Paulo", "SP", "requires_quote", None),
+        ("Campo Grande", "AL", "requires_quote", None),
+        ("Dourados", "MS", "requires_quote", None),
+        ("Outra Cidade", "MS", "requires_quote", None),
     ],
 )
 def test_shipping_uses_cep_without_inventing_metropolitan_coverage(
-    engine, city, state, region, status, shipping
+    engine, city, state, status, shipping
 ):
     ingest(engine)
 
@@ -124,12 +124,18 @@ def test_shipping_uses_cep_without_inventing_metropolitan_coverage(
         {
             "items": [{"product_id": 83}],
             "destination_postal_code": "79002-000",
-            "destination_region": region,
         }
     )
     assert result["status"] == status
     assert result["shipping_brl"] == shipping
     assert result["destination"]["city"] == city
+    if status == "requires_quote":
+        assert result["staff_quote_required"] is True
+        assert result["staff_contacted"] is False
+        assert result["follow_up_scheduled"] is False
+        assert "funcionário" in result["message"]
+        assert "confirme" not in result["message"].lower()
+        assert "metropolitana" not in result["message"].lower()
 
 
 def test_shipping_does_not_calculate_for_unknown_postal_code(engine):
@@ -148,8 +154,47 @@ def test_shipping_does_not_calculate_for_unknown_postal_code(engine):
         {
             "items": [{"product_id": 83}],
             "destination_postal_code": "99999999",
-            "destination_region": "campo_grande_metropolitan",
         }
     )
     assert result["status"] == "not_found"
     assert result["shipping_brl"] is None
+
+
+@pytest.mark.parametrize(
+    ("city", "state", "status"),
+    [
+        ("Dourados", "MS", "requires_quote"),
+        ("Outra Cidade", "MS", "requires_quote"),
+        ("Outra Cidade", None, "requires_quote"),
+        ("campo grande", "MS", "requires_policy"),
+        ("Campo Grande", "AL", "requires_quote"),
+    ],
+)
+def test_shipping_accepts_city_without_postal_code_or_customer_classification(
+    engine, city, state, status
+):
+    ingest(engine)
+
+    class NoPostalLookup:
+        def lookup(self, postal_code):
+            pytest.fail("Um destino por cidade não exige consulta de CEP")
+
+    tool = next(
+        t
+        for t in build_tools(sessionmaker(engine), postal_code_provider=NoPostalLookup())
+        if t.name == "calculate_shipping"
+    )
+    result = tool.invoke(
+        {
+            "items": [{"product_id": 83}],
+            "destination_city": city,
+            "destination_state": state,
+        }
+    )
+    assert result["status"] == status
+    assert result["destination"] == {"city": city, "state": state}
+    assert result["shipping_brl"] is None
+    if status == "requires_quote":
+        assert result["staff_quote_required"] is True
+        assert result["staff_contacted"] is False
+        assert "confirme" not in result["message"].casefold()

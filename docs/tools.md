@@ -76,11 +76,14 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
 - A consulta de frete fornece o subtotal com promoções como contexto, sem calcular
   tarifa. Taxas, limites, modalidades e prazos não são duplicados no código: para
   a região local, o agente consulta `search_policy` e usa o manual vigente.
-- `calculate_shipping` aceita `destination_postal_code`, com ou sem hífen. Consulta
+- `calculate_shipping` aceita cidade/UF em `destination_city`/`destination_state`
+  sem exigir CEP, ou `destination_postal_code`, com ou sem hífen. Consulta
   o ViaCEP; Campo Grande/MS é local e outro estado é externo. Outras cidades de MS
-  continuam exigindo confirmação da região; não há lista de cobertura metropolitana.
-  Sem CEP, usa a região confirmada pelo cliente. CEP inexistente interrompe o cálculo,
-  e CEP de outro estado em conflito com região local exige confirmação.
+   sem cobertura confirmada seguem para verificação com funcionário; não há lista de
+   cobertura metropolitana. A classificação não é um parâmetro de entrada da tool.
+   Só pede cidade/UF quando faltarem.
+   Não expõe ferramentas ou parâmetros nas respostas. CEP inexistente interrompe a consulta,
+   e o endereço consultado pelo CEP tem precedência sobre a cidade informada.
 - Fora da região metropolitana, o atendimento informa que verificará o valor com
   um funcionário e avisará ao cliente depois. Não lista modalidades/prazos fixos,
   não exige peso/dimensões e não promete prazo de retorno. A tool retorna
