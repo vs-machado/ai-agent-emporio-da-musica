@@ -551,6 +551,32 @@ def test_litellm_runtime_dispatch_works_without_real_provider():
     assert response.text == "Resposta offline"
 
 
+@pytest.mark.parametrize(
+    ("model_name", "expected_content"),
+    [
+        ("gemini/gemini-2.5-flash-lite", None),
+        ("vertex_ai/gemini-2.5-flash", None),
+        ("openrouter/deepseek/test", "Vou consultar o catálogo."),
+    ],
+)
+def test_tool_preamble_is_omitted_only_in_gemini_payload(model_name, expected_content):
+    response = call()
+    response.content = "Vou consultar o catálogo."
+    before = response.model_dump()
+    model = ToolCallingLiteLLM(model=model_name, api_key="synthetic", max_retries=0)
+    payload, _ = model._create_message_dicts(
+        [
+            HumanMessage(content="Quero um violão"),
+            response,
+            ToolMessage(content='{"status":"ok"}', tool_call_id="call-1"),
+        ],
+        None,
+    )
+    assert payload[1]["content"] == expected_content
+    assert payload[1]["tool_calls"][0]["id"] == payload[2]["tool_call_id"] == "call-1"
+    assert response.model_dump() == before
+
+
 def test_adapter_does_not_forward_provider_signatures_to_other_model():
     response = AIMessage(
         content="",
