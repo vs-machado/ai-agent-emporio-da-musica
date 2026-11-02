@@ -3,6 +3,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 import gradio as gr
 import pytest
@@ -16,10 +17,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import ConversationTurn
 from app.routes.chat import router
-from app.schemas.chat import ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat import ChatService, ChatTurn
 from app.services.errors import ChatHistoryError, ChatHistoryLimitError, ChatRequestConflictError
-from app.ui import ChatSession, ChatUI, build_chat_ui, mount_chat_ui
+from app.ui import ChatSession, ChatUI, ChatWorkspace, ConversationUI, build_chat_ui, mount_chat_ui
 
 
 class RecordingAgent:
@@ -198,7 +199,7 @@ def test_gradio_event_processes_state_and_only_serializes_public_messages():
     async def run():
         result = await demo.process_api(send, ["Olá", None], state=state)
         assert result["is_generating"]
-        assert state[state_id].pending is not None
+        assert state[state_id].current.pending is not None
         assert not agent.calls
         while result["is_generating"]:
             result = await demo.process_api(
@@ -208,7 +209,147 @@ def test_gradio_event_processes_state_and_only_serializes_public_messages():
 
     asyncio.run(run())
     assert len(agent.calls) == 1
-    assert state[state_id].messages[-1]["content"] == "Resposta pública"
+    assert state[state_id].current.messages[-1]["content"] == "Resposta pública"
+
+
+def test_switching_conversations_preserves_separate_contexts(engine):
+    agent = RecordingAgent()
+    service = ChatService(agent, session_factory=sessionmaker(engine))
+    ui = ConversationUI(lambda: service)
+    workspace = ChatWorkspace()
+    first_id = workspace.active
+    list(ui.send("Quero um violão", workspace))
+    ui.new_conversation(workspace)
+    second_id = workspace.active
+    assert first_id != second_id
+    assert not workspace.current.messages
+    list(ui.send("Preciso de um teclado", workspace))
+    assert not agent.calls[-1][1]
+    output = ui.select(str(first_id), workspace)
+    assert output[1][0]["content"] == "Quero um violão"
+    assert len(agent.calls) == 2  # Alternar não chama o modelo.
+    list(ui.send("Tem de nylon?", workspace))
+    assert agent.calls[-1][0].conversation_id == first_id
+    assert agent.calls[-1][1][0].content == "Quero um violão"
+    assert all(m.content != "Preciso de um teclado" for m in agent.calls[-1][1])
+    assert "private" not in json.dumps(ui.view(workspace, "")[1:])
+
+
+def test_reload_restores_known_conversations_and_selection_from_database(engine):
+    agent = RecordingAgent()
+    service = ChatService(agent, session_factory=sessionmaker(engine))
+    ui = ConversationUI(lambda: service)
+    workspace = ChatWorkspace()
+    first_id = workspace.active
+    list(ui.send("Primeira conversa", workspace))
+    ui.new_conversation(workspace)
+    list(ui.send("Segunda conversa", workspace))
+    ui.select(str(first_id), workspace)
+    saved = ui.view(workspace, "")[8]
+    unrelated = ChatRequest(message="Conversa de outro navegador")
+    service.chat(unrelated)
+
+    restored = ConversationUI(lambda: service).restore(saved)[0]
+    assert restored is not workspace
+    assert restored.active == first_id
+    assert restored.conversations == workspace.conversations
+    assert unrelated.conversation_id not in restored.conversations
+    assert len(agent.calls) == 3  # Restaurar só lê o banco.
+    assert set(saved) == {"ids", "active"}
+    assert "Primeira conversa" not in json.dumps(saved)
+    assert "private" not in json.dumps(ui.view(restored, "")[1:])
+
+
+def test_opening_old_conversation_by_id_loads_public_messages_and_continues(engine):
+    agent = RecordingAgent()
+    service = ChatService(agent, session_factory=sessionmaker(engine))
+    request = ChatRequest(message="Uma conversa anterior")
+    service.chat(request)
+    ui = ConversationUI(lambda: service)
+    workspace = ChatWorkspace()
+    output = ui.open_conversation(str(request.conversation_id), workspace)
+    assert workspace.active == request.conversation_id
+    assert output[1] == [
+        {"role": "user", "content": "Uma conversa anterior"},
+        {"role": "assistant", "content": "Resposta pública"},
+    ]
+    list(ui.send("Continue", workspace))
+    assert agent.calls[-1][1][0].content == "Uma conversa anterior"
+    selected = workspace.active
+    assert "válido" in ui.open_conversation("não é UUID", workspace)[6]
+    assert "não encontrada" in ui.open_conversation(str(uuid4()), workspace)[6]
+    assert workspace.active == selected
+
+
+def test_navigation_is_blocked_during_a_turn():
+    agent = RecordingAgent()
+    ui = ConversationUI(lambda: ChatService(agent))
+    workspace = ChatWorkspace()
+    first_id = workspace.active
+    workspace.current.messages = [{"role": "user", "content": "Conversa anterior"}]
+    ui.new_conversation(workspace)
+    active = workspace.active
+    sending = ui.send("Olá", workspace)
+    output = next(sending)
+    assert not output[9]["interactive"]
+    assert not output[10]["interactive"]
+    ui.select(str(first_id), workspace)
+    ui.open_conversation(str(first_id), workspace)
+    ui.new_conversation(workspace)
+    assert workspace.active == active
+    assert not agent.calls
+    list(sending)
+    assert len(agent.calls) == 1
+    ui.select(str(first_id), workspace)
+    assert workspace.active == first_id
+
+
+def test_pending_retry_survives_switching_conversations(engine):
+    agent = RecordingAgent()
+
+    class LostResponse(ChatService):
+        def __init__(self):
+            super().__init__(agent, session_factory=sessionmaker(engine))
+            self.requests = []
+
+        def chat(self, request):
+            self.requests.append(request.model_copy())
+            turn = super().chat(request)
+            if len(self.requests) == 1:
+                raise SQLAlchemyError("private")
+            return turn
+
+    service = LostResponse()
+    ui = ConversationUI(lambda: service)
+    workspace = ChatWorkspace()
+    first_id = workspace.active
+    list(ui.send("Minha mensagem", workspace))
+    pending = workspace.current.pending
+    ui.new_conversation(workspace)
+    list(ui.send("Outro assunto", workspace))
+    ui.select(str(first_id), workspace)
+    assert workspace.current.pending is pending
+    list(ui.retry(workspace))
+    assert service.requests[0] == service.requests[-1]
+    assert len(agent.calls) == 2
+    assert workspace.current.pending is None
+    assert len(workspace.current.messages) == 2
+
+
+def test_restore_handles_invalid_browser_data_and_sanitizes_database_failure():
+    class FailingService:
+        def load_conversations(self, ids):
+            raise SQLAlchemyError("private-credentials")
+
+    ui = ConversationUI(FailingService)
+    fresh = ui.restore({"ids": ["invalid", None, {}], "active": "invalid"})[0]
+    assert len(fresh.conversations) == 1
+    conversation_id = str(uuid4())
+    output = ui.restore({"ids": [conversation_id, conversation_id], "active": conversation_id})
+    assert list(output[0].conversations) == [output[0].active]
+    assert output[0].current.blocked
+    assert "private" not in json.dumps(output[1:])
+    assert output[8]["ids"] == [conversation_id]
 
 
 def test_mounted_gradio_preserves_lifespan_and_http_api():
