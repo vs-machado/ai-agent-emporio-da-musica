@@ -1,13 +1,22 @@
 """Consultas ao catálogo e seleção não cumulativa de promoções."""
 
+import re
 import unicodedata
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import Category, Product, Promotion
 from app.schemas.catalog import ProductDetails, ProductSearch, PromotionSearch
+
+SEARCH_STOP_WORDS = frozenset({"de", "da", "do", "das", "dos", "e", "com"})
+MATERIAL_ALIASES = {
+    "aco": ("aco", "steel"),
+    "steel": ("aco", "steel"),
+    "nylon": ("nylon", "nailon"),
+    "nailon": ("nylon", "nailon"),
+}
 
 
 def money(value: Decimal) -> str:
@@ -22,10 +31,44 @@ def normalized(value: str) -> str:
     )
 
 
+def normalized_column(column):
+    return func.translate(func.lower(column), "áàâãäéèêëíìîïóòôõöúùûüç", "aaaaaeeeeiiiiooooouuuuc")
+
+
 def contains_text(column, value: str):
-    return func.translate(
-        func.lower(column), "áàâãäéèêëíìîïóòôõöúùûüç", "aaaaaeeeeiiiiooooouuuuc"
-    ).contains(normalized(value), autoescape=True)
+    return normalized_column(column).contains(normalized(value), autoescape=True)
+
+
+def search_terms(value: str) -> list[str]:
+    terms = normalized(value).split()
+    return [term for term in terms if term not in SEARCH_STOP_WORDS] or terms
+
+
+def text_variants(term: str) -> list[str]:
+    """Variações lexicais, preservando todos os termos relevantes da consulta."""
+    variants = set(MATERIAL_ALIASES.get(term, (term,)))
+    if term.endswith("ao"):
+        variants.update((term[:-2] + "oes", term + "s"))
+    elif term.endswith("oes"):
+        variants.add(term[:-3] + "ao")
+    elif term.endswith("s") and len(term) > 3:
+        variants.add(term[:-1])
+    return sorted(variants)
+
+
+def matches_term(columns, term: str):
+    # Materiais são palavras completas: "aço" não deve corresponder a "braço".
+    if term in MATERIAL_ALIASES:
+        return or_(
+            *(
+                normalized_column(column).regexp_match(r"\m" + re.escape(variant) + r"\M")
+                for column in columns
+                for variant in text_variants(term)
+            )
+        )
+    return or_(
+        *(contains_text(column, variant) for column in columns for variant in text_variants(term))
+    )
 
 
 def active_promotions(session: Session, product_ids: list[int]) -> dict[int, Promotion]:
@@ -73,7 +116,8 @@ class CatalogService:
 
         Args:
             request: Filtros de catálogo. Marca é buscada no nome, pois não há
-                coluna própria. A busca textual ignora caixa e acentos latinos.
+                coluna própria. A busca ignora caixa, acentos e conectivos e inclui
+                especificações, variações de singular/plural e materiais das cordas.
 
         Returns:
             Página ordenada por preço atual e ID, com disponibilidade calculada.
@@ -89,14 +133,21 @@ class CatalogService:
         price = func.round(Product.price_brl * (1 - func.coalesce(active_discount, 0) / 100), 2)
         statement = select(Product, Category.name).join(Category)
         if request.query:
-            for term in request.query.split():
+            for term in search_terms(request.query):
                 statement = statement.where(
-                    contains_text(Product.name, term)
-                    | contains_text(Product.description, term)
-                    | contains_text(Category.name, term)
+                    matches_term(
+                        (
+                            Product.name,
+                            Product.description,
+                            Category.name,
+                            cast(Product.specs, Text),
+                        ),
+                        term,
+                    )
                 )
         if request.category:
-            statement = statement.where(contains_text(Category.name, request.category))
+            for term in search_terms(request.category):
+                statement = statement.where(matches_term((Category.name,), term))
         if request.brand:
             statement = statement.where(contains_text(Product.name, request.brand))
         if request.available_only:
@@ -116,12 +167,22 @@ class CatalogService:
             return {
                 "status": "ok",
                 "products": [
-                    product_data(product, category, promotions.get(product.product_id))
+                    {
+                        **product_data(product, category, promotions.get(product.product_id)),
+                        "specs": product.specs,
+                    }
                     for product, category in rows[: request.limit]
                 ],
                 "has_more": len(rows) > request.limit,
                 "brand_filter_source": "product_name",
                 "price_basis": "current_price_without_pix",
+                "search_guidance": (
+                    "Nenhum produto corresponde aos filtros desta busca. Isso não confirma "
+                    "falta de estoque da categoria. Revise os termos e faça uma busca mais "
+                    "ampla antes de concluir; não ofereça alternativas sem consultá-las."
+                    if not rows
+                    else None
+                ),
             }
 
     def get_product_details(self, request: ProductDetails) -> dict:

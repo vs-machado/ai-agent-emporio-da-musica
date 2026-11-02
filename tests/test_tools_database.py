@@ -40,6 +40,45 @@ def test_catalog_filters_accents_brand_current_price_and_pagination(tools):
     assert promo["products"][0]["current_price_brl"] == "323.10"
 
 
+@pytest.mark.parametrize("category", ["violão", "violao", "Violões", "violoes"])
+def test_catalog_accepts_singular_and_plural_category_names(tools, category):
+    result = tools["search_products"].invoke({"category": category, "limit": 20})
+    assert len(result["products"]) == 20
+    assert result["has_more"]
+    assert all(p["category_id"] == 5 and p["available"] for p in result["products"])
+
+
+@pytest.mark.parametrize(
+    ("query", "material"),
+    [("violão de nylon", "nylon"), ("violões de náilon", "nylon"), ("violão de aço", "steel")],
+)
+def test_catalog_searches_guitar_material_without_false_stock_absence(
+    tools, engine, query, material
+):
+    result = tools["search_products"].invoke({"category": "violão", "query": query, "limit": 20})
+    with Session(engine) as session:
+        expected = {
+            p.product_id
+            for p in session.scalars(
+                select(Product).where(
+                    Product.category_id == 5, Product.status == "active", Product.stock_quantity > 0
+                )
+            )
+            if p.specs.get("strings") == material
+        }
+    assert {p["product_id"] for p in result["products"]} == expected
+    assert all(p["specs"]["strings"] == material for p in result["products"])
+    prices = [Decimal(p["current_price_brl"]) for p in result["products"]]
+    assert prices == sorted(prices)
+
+
+def test_empty_catalog_search_does_not_claim_category_has_no_stock(tools):
+    result = tools["search_products"].invoke({"category": "violão", "brand": "marca-inexistente"})
+    assert result["products"] == []
+    assert "não confirma" in result["search_guidance"]
+    assert tools["search_products"].invoke({"category": "violão"})["products"]
+
+
 @pytest.mark.parametrize("product_id", [96, 113, 130, 136])
 def test_unavailable_products_have_available_alternatives(tools, product_id):
     response = tools["get_product_details"].invoke({"product_id": product_id})
