@@ -52,11 +52,20 @@ def snapshot(engine, settings):
                 "processing_config": index.processing_config,
             }
         )
-    git = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
-    dirty = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+    git_commit, working_tree_dirty = None, None
+    try:
+        git = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+        dirty = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+        if git.returncode == 0:
+            git_commit = git.stdout.strip()
+        if dirty.returncode == 0:
+            working_tree_dirty = bool(dirty.stdout.strip())
+    except FileNotFoundError:
+        # A imagem de runtime não inclui Git; hashes das fontes continuam disponíveis.
+        pass
     return {
-        "git_commit": git.stdout.strip() if git.returncode == 0 else None,
-        "working_tree_dirty": bool(dirty.stdout.strip()),
+        "git_commit": git_commit,
+        "working_tree_dirty": working_tree_dirty,
         "packages": {p: version(p) for p in ("ragas", "langchain", "litellm")},
         "prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest(),
         "source_hashes": {
@@ -97,8 +106,15 @@ def snapshot(engine, settings):
         },
         "temperature": 0,
         "model_retries": 0,
-        "primary_enabled": settings.google_api_key is not None,
-        "fallback_enabled": settings.openrouter_api_key is not None,
+        "primary_enabled": (
+            settings.openrouter_api_key is not None
+            if settings.chat_primary_model.startswith("openrouter/")
+            else settings.google_api_key is not None
+        ),
+        "fallback_enabled": (
+            settings.openrouter_api_key is not None
+            and settings.chat_fallback_model != settings.chat_primary_model
+        ),
     }
 
 

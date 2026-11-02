@@ -1,6 +1,6 @@
 {
-  "version": "2026-11-02.4",
-  "source": "29 casos derivados dos 56 turnos revisados do banco, com reformulações, e dois cenários de frete solicitados pelo usuário. CEP 79002-000 confirmado no ViaCEP. Referências verificadas no manual 2.1.",
+  "version": "2026-11-02.5",
+  "source": "28 casos derivados dos 56 turnos revisados do banco, com reformulações, e três cenários solicitados pelo usuário: dois de frete e um de violão de sete cordas, substituindo o caso de eletroacústico exemplificado nas instruções. CEP 79002-000 confirmado no ViaCEP. Referências verificadas no manual 2.1.",
   "cases": [
     {
       "id": "aberto_agora", "source_turn_id": 15,
@@ -215,12 +215,11 @@
       "catalog": "violao_acustico"
     },
     {
-      "id": "violao_eletroacustico", "source_turn_id": 50,
-      "question": "e violao eletroacustico",
-      "history": [{"role": "user", "content": "Estou comparando violões acústicos e eletroacústicos."}, {"role": "assistant", "content": "Posso consultar os dois tipos."}],
+      "id": "violao_sete_cordas", "origin": "user_requested",
+      "question": "Vocês têm algum violão de sete cordas? Quero ver os modelos e preços disponíveis.",
       "expected_tools": ["search_products"],
-      "reference_calls": [{"name": "search_products", "args": {"query": "violão eletroacústico"}}],
-      "catalog": "violao"
+      "reference_calls": [{"name": "search_products", "args": {"query": "violão 7 cordas"}}],
+      "catalog": "violao_sete_cordas"
     },
     {
       "id": "recuperar_busca_sem_resultados", "source_turn_id": 51,

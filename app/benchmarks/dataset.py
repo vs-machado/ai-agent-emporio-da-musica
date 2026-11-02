@@ -41,6 +41,7 @@ class BenchmarkCase(BaseModel):
             "promotions",
             "violao",
             "violao_acustico",
+            "violao_sete_cordas",
             "nylon",
             "aco",
             "teclado",
