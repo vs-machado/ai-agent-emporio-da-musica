@@ -18,11 +18,15 @@ result = tool.invoke({"postal_code": "01001-000"})
 O CEP do manual é fictício e não é substituído automaticamente por outro.
 O endereço retornado não comprova cobertura do motoboy nem preço de entrega.
 
-`calculate_shipping` também aceita `destination_postal_code`. Quando informado,
+`calculate_shipping` aceita cidade/UF em `destination_city`/`destination_state`,
+sem exigir CEP, e também aceita `destination_postal_code`. Quando informado,
 valida o destino e devolve o endereço junto ao resultado. Campo Grande/MS é
-identificado como local; outro estado é externo. Para outras cidades de MS, o
-cliente ainda precisa confirmar se está na região de entrega. Sem CEP, permanece
-disponível o campo `destination_region`, confirmado pelo cliente.
+identificado como local; outro estado é externo. Para outras cidades de MS sem
+cobertura confirmada, o frete é verificado com um funcionário. A tool recebe apenas
+dados do destino, sem um parâmetro de classificação regional a preencher pelo modelo.
+O cliente informa o destino, nunca precisa classificar sua cidade como metropolitana,
+capital ou afastada. Se a cidade já estiver clara, não se exige CEP para encaminhar
+a verificação com funcionário.
 
 ```python
 tool = next(t for t in tools if t.name == "calculate_shipping")
@@ -57,6 +61,8 @@ O padrão de resposta é:
 Não exige peso, dimensões ou CEP antes dessa orientação quando a cidade já deixa claro
 que o destino é externo. Não oferece modalidades, valores ou prazos de entrega fixos.
 Não promete prazo de retorno nem afirma contato já realizado ou agendamento automático.
+As respostas usam linguagem de atendimento, sem mencionar ferramentas, parâmetros
+ou categorias técnicas. Se houver dúvida sobre cobertura, a confirmação cabe à equipe.
 
 A tool retorna `requires_quote` e `staff_quote_required=true`, com `staff_contacted=false`
 e `follow_up_scheduled=false`. Isso representa a orientação de atendimento; não há

@@ -781,7 +781,11 @@ def test_local_shipping_receives_current_policy_instead_of_fixed_rates(
         responses=[
             call(
                 "calculate_shipping",
-                {"items": [{"product_id": 83}], "destination_region": "campo_grande_metropolitan"},
+                {
+                    "items": [{"product_id": 83}],
+                    "destination_city": "Campo Grande",
+                    "destination_state": "MS",
+                },
             ),
             call("search_policy", {"query": "Condições de frete local"}, call_id="policy"),
             AIMessage(content=policy_text),
