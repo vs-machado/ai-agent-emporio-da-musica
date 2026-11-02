@@ -2,9 +2,11 @@
 
 O Docker Compose disponibiliza a API FastAPI e PostgreSQL 16 com pgvector instalado e um volume persistente para desenvolvimento local. A extensão será habilitada no banco pela primeira migration Alembic, antes da criação de tabelas vetoriais. São necessários Docker e Docker Compose.
 
-Copie a configuração de exemplo, preencha `GOOGLE_API_KEY` no `.env` e inicie os serviços.
-`OPENROUTER_API_KEY` pode ficar vazia; ela habilita o fallback opcional de chat
-DeepSeek via OpenRouter, sem participação na geração dos embeddings.
+Copie a configuração de exemplo, preencha `OPENROUTER_API_KEY` para o atendimento
+DeepSeek e `GOOGLE_API_KEY` para a indexação e os embeddings das políticas no `.env`.
+O modelo padrão é `openrouter/deepseek/deepseek-v4.1-flash`.
+`CHAT_FALLBACK_MODEL` fica vazio por padrão: não há fallback automático.
+Para habilitá-lo, informe um modelo diferente do primário e a chave de seu provedor.
 
 ```bash
 cp .env.example .env

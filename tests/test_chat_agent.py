@@ -59,7 +59,7 @@ def settings():
         postgres_password="test",
         google_api_key=None,
         openrouter_api_key=None,
-        chat_primary_model="gemini/gemini-2.5-flash-lite",
+        chat_primary_model="gemini/gemini-3.5-flash-lite",
         chat_fallback_model="openrouter/deepseek/deepseek-v4.1-flash",
     )
 
@@ -480,11 +480,43 @@ def test_model_configuration_is_lazy_and_fallback_optional(settings, monkeypatch
     monkeypatch.setattr(litellm, "completion", lambda **kwargs: pytest.fail("Chamada inesperada"))
     configured = settings.model_copy(update={"google_api_key": settings.postgres_password})
     models = build_models(configured)
-    assert models.primary.model == "gemini/gemini-2.5-flash-lite"
+    assert models.primary.model == "gemini/gemini-3.5-flash-lite"
     assert models.primary.max_retries == 0
     assert models.fallback is None
     configured = configured.model_copy(update={"openrouter_api_key": settings.postgres_password})
     assert build_models(configured).fallback is not None
+
+
+def test_no_fallback_model_does_not_create_adapter_even_with_both_keys(settings):
+    configured = settings.model_copy(
+        update={
+            "chat_fallback_model": None,
+            "google_api_key": settings.postgres_password,
+            "openrouter_api_key": settings.postgres_password,
+        }
+    )
+    models = build_models(configured)
+    assert models.primary is not None
+    assert models.fallback is None
+    assert models.fallback_name is None
+
+
+def test_gemini_fallback_uses_google_key_for_openrouter_primary(settings):
+    from pydantic import SecretStr
+
+    configured = settings.model_copy(
+        update={
+            "chat_primary_model": "openrouter/deepseek/deepseek-v4.1-flash",
+            "chat_fallback_model": "gemini/gemini-3.5-flash-lite",
+            "google_api_key": SecretStr("google-test-key"),
+            "openrouter_api_key": SecretStr("openrouter-test-key"),
+        }
+    )
+    models = build_models(configured)
+    assert models.primary.api_key == "openrouter-test-key"
+    assert models.fallback.api_key == "google-test-key"
+    assert models.fallback_name == configured.chat_fallback_model
+    assert build_models(configured.model_copy(update={"google_api_key": None})).fallback is None
 
 
 def test_openrouter_primary_uses_its_key_without_duplicate_fallback(settings):
