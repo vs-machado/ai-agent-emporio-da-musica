@@ -184,7 +184,9 @@ def test_shipping_requests_destination_not_customer_region_classification(tools)
     assert missing_destination["status"] == "requires_information"
     assert "cidade e estado" in missing_destination["message"]
     assert "Se já souber o destino" in missing_destination["message"]
-    result = tools["calculate_shipping"].invoke({**args, "destination_city": "Outra Cidade"})
+    result = tools["calculate_shipping"].invoke(
+        {**args, "destination_city": "Outra Cidade", "destination_state": "MS"}
+    )
     assert result["status"] == "requires_quote"
     assert result["shipping_brl"] is None
     assert "methods" not in result

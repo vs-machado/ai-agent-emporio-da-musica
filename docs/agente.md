@@ -18,7 +18,7 @@ LiteLLM e tools estruturadas. O RAG continua separado, atrás da tool `search_po
 | `app/agents/prompt.py` | Instruções de atendimento em português |
 
 O lifespan da API prepara `app.state.chat_service` com as onze tools, sem chamar
-provedores. Sem chave Google, o serviço retorna `unavailable`; isso permite
+provedores. Sem a chave do provedor primário, o serviço retorna `unavailable`; isso permite
 inicializar e testar a aplicação sem inventar respostas de atendimento.
 
 O endpoint `POST /chat` usa esse serviço e retorna somente `ChatResponse`.
@@ -56,10 +56,10 @@ humano em uma data/hora específica.
 
 | Variável | Padrão | Uso |
 |---|---|---|
-| `GOOGLE_API_KEY` | vazia | Necessária para o agente primário e novos embeddings |
-| `OPENROUTER_API_KEY` | vazia | Habilita o fallback opcional DeepSeek |
-| `CHAT_PRIMARY_MODEL` | `gemini/gemini-2.5-flash-lite` | Identificador LiteLLM do primário |
-| `CHAT_FALLBACK_MODEL` | `openrouter/deepseek/deepseek-v4.1-flash` | Identificador LiteLLM do fallback |
+| `GOOGLE_API_KEY` | vazia | Embeddings das políticas e modelos Gemini configurados |
+| `OPENROUTER_API_KEY` | vazia | Necessária para o primário padrão DeepSeek via OpenRouter |
+| `CHAT_PRIMARY_MODEL` | `openrouter/deepseek/deepseek-v4.1-flash` | Identificador LiteLLM do primário |
+| `CHAT_FALLBACK_MODEL` | vazia | Fallback opcional; ausente, vazia ou só espaços desativa a rota |
 | `CHAT_MODEL_TIMEOUT` | `20` | Timeout em segundos por tentativa de provedor |
 | `CHAT_MAX_OUTPUT_TOKENS` | `2048` | Máximo de tokens de saída por chamada |
 | `CHAT_MAX_MODEL_CALLS` | `6` | Rodadas de modelo por turno |
@@ -69,8 +69,10 @@ humano em uma data/hora específica.
 Os identificadores acima refletem as decisões do projeto; a disponibilidade e o
 comportamento dos modelos ainda precisam ser conferidos com os provedores reais.
 As chaves são carregadas como segredos em `Settings`, sem exportá-las globalmente.
-Chaves vazias são normalizadas para ausência. Apenas a chave OpenRouter não
-substitui a configuração obrigatória do primário.
+Chaves vazias são normalizadas para ausência. Modelos `openrouter/` usam a chave
+OpenRouter; modelos Gemini usam a chave Google, tanto no primário quanto no fallback.
+O fallback só é criado se houver um modelo configurado, diferente do primário,
+e a chave correspondente. Ter as duas chaves não habilita fallback automaticamente.
 
 ## Executar um turno
 

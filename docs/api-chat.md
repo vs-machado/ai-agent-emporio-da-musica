@@ -31,7 +31,7 @@ Exemplo de formato da resposta (conteúdo ilustrativo):
   "request_id": "4d0ea984-be10-4cf2-9066-54beee850283",
   "status": "ok",
   "message": "Olá! Como posso ajudar?",
-  "model": "gemini/gemini-2.5-flash-lite",
+  "model": "openrouter/deepseek/deepseek-v4.1-flash",
   "used_fallback": false,
   "actions": []
 }
