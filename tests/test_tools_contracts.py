@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.schemas.catalog import ProductDetails, ProductSearch
 from app.schemas.commerce import PaymentQuote, ShippingQuote
+from app.schemas.orders import OrderLookup, RefundQuote
 from app.schemas.policies import PolicyPassage
 from app.tools import build_tools
 from app.tools.registry import service_tool
@@ -103,6 +104,23 @@ def test_invalid_tool_arguments_do_not_expose_input_or_access_database():
     response = tool.invoke({"order_id": 1, "email": "invalid-private-value"})
     assert "Parâmetros inválidos" in response
     assert "invalid-private-value" not in response
+
+
+def test_order_search_needs_no_number_or_identity_arguments():
+    tool = next(t for t in build_tools(sessionmaker()) if t.name == "get_order_status")
+    schema = convert_to_openai_tool(tool)["function"]["parameters"]
+    assert not schema.get("required")
+    assert OrderLookup().order_id is None
+    with pytest.raises(ValidationError):
+        OrderLookup(customer_id=3)
+    # O ID usado no cálculo vem da consulta, não precisa ser solicitado ao cliente.
+    assert "order_id" in RefundQuote.model_json_schema()["required"]
+
+
+@pytest.mark.parametrize("payload", [{"limit": 21}, {"offset": -1}, {"order_id": 0}])
+def test_order_search_rejects_invalid_pagination_or_id(payload):
+    with pytest.raises(ValidationError):
+        OrderLookup.model_validate(payload)
 
 
 def test_database_failure_is_sanitized():
