@@ -240,6 +240,43 @@ def test_order_lookup_requires_matching_email_and_minimizes_output(tools, engine
     assert waiting["estimated_delivery"] is None
 
 
+def test_order_search_without_number_lists_only_authenticated_customer_and_paginates(tools):
+    tool = tools["get_order_status"]
+    result = tool.invoke({})
+    assert result["status"] == "ok"
+    assert [order["order_id"] for order in result["orders"]] == [19, 1]
+    assert not result["has_more"]
+    assert result["orders"][1]["items"]
+    assert result["orders"][1]["tracking_code"] == "BRAB1234567BR"
+    assert not any(key in json.dumps(result) for key in ("contact_email", "phone", "notes"))
+    first = tool.invoke({"limit": 1})
+    second = tool.invoke({"limit": 1, "offset": 1})
+    assert first["has_more"]
+    assert [order["order_id"] for order in first["orders"]] == [19]
+    assert [order["order_id"] for order in second["orders"]] == [1]
+    assert not second["has_more"]
+    # Conhecer os dados de outro cliente não troca a identidade da busca.
+    assert tool.invoke({"email": "lucas.mendes@jmail.com"})["orders"] == []
+    assert tool.invoke({"order_id": 4, "email": "lucas.mendes@jmail.com"})["status"] == "not_found"
+
+
+@pytest.mark.parametrize("customer_id", [None, 50])
+def test_order_search_without_customer_or_purchases_does_not_expose_orders(tools, customer_id):
+    token = current_principal.set(Principal(uuid4(), customer_id, "sem-pedidos@example.test"))
+    try:
+        result = tools["get_order_status"].invoke({})
+        assert result["status"] == "not_found"
+        assert result["orders"] == []
+        assert not result["has_more"]
+    finally:
+        current_principal.reset(token)
+    token = current_principal.set(None)
+    try:
+        assert tools["get_order_status"].invoke({})["orders"] == []
+    finally:
+        current_principal.reset(token)
+
+
 def test_complaint_is_persisted_idempotent_and_not_forwarded(tools, engine):
     args = {
         "request_id": str(uuid4()),

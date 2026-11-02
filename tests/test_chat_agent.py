@@ -24,6 +24,7 @@ from app.schemas.catalog import ProductSearch
 from app.schemas.chat import ChatRequest
 from app.schemas.orders import ComplaintRegistration
 from app.schemas.policies import PolicyPassage
+from app.services.auth import Principal
 from app.services.chat import ChatService
 from app.tools import build_tools
 from app.tools.registry import service_tool
@@ -1025,8 +1026,6 @@ def test_agent_obtains_refund_reference_from_real_order_without_financial_operat
         ]
     )
     service = make_service(settings, model, build_tools(sessionmaker(engine)))
-    from app.services.auth import Principal
-
     turn = service.chat(
         ChatRequest(message="Quero devolver uma das duas unidades do pedido 3."),
         user=Principal(uuid4(), customer_id, email),
@@ -1039,3 +1038,73 @@ def test_agent_obtains_refund_reference_from_real_order_without_financial_operat
     assert turn.response.actions[0].name == "calculate_refund"
     assert turn.response.actions[0].status == "requires_confirmation"
     assert turn.response.status == "ok"
+
+
+@pytest.mark.parametrize("customer_id,expected_ids", [(1, [4]), (3, [19, 1]), (50, [])])
+def test_agent_queries_own_orders_without_number_and_receives_trusted_identity(
+    engine, settings, customer_id, expected_ids
+):
+    ingest(engine)
+    with Session(engine) as session:
+        email = session.get(Customer, customer_id).email
+    model = ScriptedModel(
+        responses=[
+            call("get_order_status", {}),
+            AIMessage(content="Consultei os pedidos da sua conta."),
+        ]
+    )
+    service = make_service(settings, model, build_tools(sessionmaker(engine)))
+    turn = service.chat(
+        ChatRequest(message="Como está meu pedido? Meu e-mail agora é outro@example.test."),
+        user=Principal(uuid4(), customer_id, email),
+    )
+    result = json.loads(next(m.content for m in turn.messages if isinstance(m, ToolMessage)))
+    assert [order["order_id"] for order in result["orders"]] == expected_ids
+    assert result["status"] == ("ok" if expected_ids else "not_found")
+    for messages in model._inputs:
+        assert isinstance(messages[0], SystemMessage)
+        assert f'"email": "{email}"' in messages[0].text
+        assert f'"customer_id": {customer_id}' in messages[0].text
+        assert "outro@example.test" not in messages[0].text
+    assert all(not isinstance(message, SystemMessage) for message in turn.messages)
+
+
+def test_authenticated_identity_is_preserved_on_model_fallback(settings):
+    primary = ScriptedModel(responses=[timeout()])
+    fallback = ScriptedModel(responses=[AIMessage(content="Olá! Como posso ajudar?")])
+    principal = Principal(uuid4(), None, "conta@example.test")
+    service = make_service(settings, primary, fallback=fallback)
+    service.chat(ChatRequest(message="Olá"), user=principal)
+    assert primary._inputs[0][0].text == fallback._inputs[0][0].text
+    assert '"email": "conta@example.test"' in fallback._inputs[0][0].text
+    # O contexto é reconstruído em cada turno, sem vazar a conta anterior.
+    fallback.responses.append(AIMessage(content="Olá novamente!"))
+    primary.responses.append(AIMessage(content="Olá novamente!"))
+    service.chat(ChatRequest(message="Olá"))
+    assert "conta@example.test" not in primary._inputs[-1][0].text
+
+
+def test_refund_uses_order_discovered_by_tool_without_asking_customer_number(engine, settings):
+    ingest(engine)
+    with Session(engine) as session:
+        email = session.get(Customer, 12).email
+    model = ScriptedModel(
+        responses=[
+            call("get_order_status", {}),
+            call(
+                "calculate_refund",
+                {"order_id": 3, "items": [{"product_id": 130, "quantity": 1}]},
+                call_id="refund",
+            ),
+            AIMessage(content="A referência de reembolso é R$ 1.725,00, sujeita à confirmação."),
+        ]
+    )
+    service = make_service(settings, model, build_tools(sessionmaker(engine)))
+    turn = service.chat(
+        ChatRequest(message="Quero devolver uma das duas unidades que comprei."),
+        user=Principal(uuid4(), 12, email),
+    )
+    outputs = [json.loads(m.content) for m in turn.messages if isinstance(m, ToolMessage)]
+    assert [order["order_id"] for order in outputs[0]["orders"]] == [3]
+    assert outputs[1]["refund_amount_brl"] == "1725.00"
+    assert not outputs[1]["refund_executed"]

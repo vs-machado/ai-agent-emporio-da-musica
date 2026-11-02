@@ -135,8 +135,11 @@ def build_tools(
         ),
         (
             "get_order_status",
-            "Consulta pedido e rastreamento pelo número, somente para o cliente autenticado. "
-            "Não exija e-mail: a identidade é validada pelo backend. "
+            "Consulta pedidos e rastreamento somente do cliente autenticado. Sem parâmetros, "
+            "lista seus pedidos com produtos, datas, estados e IDs; use limit/offset para paginar. "
+            "order_id é filtro opcional para um pedido específico. Não exija número ou e-mail "
+            "do cliente: a identidade é validada pelo backend. Se a referência for ambígua, "
+            "peça que escolha pelo produto ou data, sem selecionar automaticamente o mais recente. "
             "Não consulte pedidos de terceiros. Previsão não "
             "comprova recebimento nem elegibilidade para troca ou garantia.",
             OrderLookup,
@@ -145,7 +148,8 @@ def build_tools(
         (
             "calculate_refund",
             "Consulta ou calcula referência de reembolso pelo número do pedido "
-            "do cliente autenticado. Não exija e-mail. "
+            "do cliente autenticado. Obtenha o ID por get_order_status, sem exigir número "
+            "ou e-mail do cliente. "
             "Sem items, considera devolução integral; para parcial, informe produtos e quantidades "
             "do pedido consultado. Usa o total registrado, nunca preços atuais. O rateio em pedido "
             "com um único produto é estimativa do protótipo, não regra do manual. Pedidos com "

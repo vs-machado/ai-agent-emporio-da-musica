@@ -93,7 +93,7 @@ argumentos extras: `query=bateria, category=instrumentos musicais` pode receber
 accuracy 1 mesmo estando incorreto. `ToolCallF1` detecta essa diferença, enquanto
 recall dos nomes revela que a ferramenta certa foi chamada. Nenhuma dessas
 métricas, isoladamente, comprova uso correto do resultado. Nos casos em que nenhuma
-chamada é esperada (por exemplo, pedir número/e-mail antes de consultar um pedido),
+chamada é esperada (por exemplo, uma saudação sem consulta comercial),
 F1 fica `skipped: no_expected_calls`; `ToolCallAccuracy` e o recall de nomes
 avaliam a ausência correta ou a presença indevida de chamadas.
 
