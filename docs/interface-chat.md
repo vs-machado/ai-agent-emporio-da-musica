@@ -1,8 +1,10 @@
 # Interface de atendimento
 
 O Gradio está montado na mesma aplicação FastAPI em **`/ui`**. Com os serviços
-preparados conforme [Docker](docker.md), acesse `http://localhost:8000/ui/`.
-O endpoint `POST /chat`, `/docs` e `/health` continuam disponíveis.
+preparados conforme [Docker](docker.md), acesse `http://localhost:8000/` e entre
+na sua conta. Cadastro e login ficam em `/auth`; o chat exige autenticação.
+Veja [Autenticação](autenticacao.md) para configuração e contas demo com pedidos.
+`POST /chat` e `GET /conversations` exigem login; `/docs` e `/health` são públicos.
 
 ## Conversar
 
@@ -14,7 +16,8 @@ O endpoint `POST /chat`, `/docs` e `/health` continuam disponíveis.
    de onde parou, sem atualizar a página.
 
 O UUID da conversa aparece em um campo somente leitura. Cada sessão de navegador
-mantém suas conversas, a seleção atual e eventuais solicitações pendentes.
+mantém a seleção atual e eventuais solicitações pendentes. As conversas salvas
+pertencem à conta autenticada.
 Cada envio novo recebe um `request_id` novo.
 
 Os callbacks usam o mesmo `app.state.chat_service` que a API, sem uma chamada HTTP
@@ -47,24 +50,23 @@ executar em paralelo; o serviço serializa turnos da mesma conversa no banco.
 lista lateral. Os títulos usam o início da primeira mensagem e um trecho do UUID.
 Uma conversa nova ainda vazia é reutilizada ao clicar novamente no botão.
 
-A lista de UUIDs e a conversa selecionada ficam no `localStorage` deste navegador
-por `gr.BrowserState`, com chave estável entre reinícios da aplicação. Ao atualizar
-a página, a interface recupera do PostgreSQL somente os textos públicos dessas
-conversas. Mensagens e resultados de tools não são armazenados no `BrowserState`.
-Outro navegador ou armazenamento local apagado não recupera essa lista automaticamente.
+A lista é recuperada do PostgreSQL pela conta autenticada ao abrir a página,
+inclusive em outro navegador. Somente textos públicos são exibidos. O índice
+visual em `gr.State` é transitório; nenhum token fica no localStorage.
 
-Para retomar uma conversa anterior à implementação ou aberta em outro navegador,
+Para retomar uma conversa da própria conta pelo UUID,
 expanda **Retomar conversa pelo ID**, informe o UUID e clique em **Abrir conversa**.
-Ela será adicionada à lista local. A interface não lista globalmente as conversas
-do banco. A leitura do histórico não executa novamente o agente ou as tools.
+Ela será adicionada à lista visual. UUIDs de outras contas e conversas anônimas
+antigas não concedem acesso. A leitura não executa novamente o agente ou as tools.
 
 Durante o atendimento, criação e troca de conversa ficam desabilitadas. Uma mensagem
 pendente de retry permanece associada à sua conversa ao alternar entre atendimentos
 na mesma sessão; retomar essa conversa permite usar **Tentar novamente** com o mesmo
 `request_id`. A pendência em memória não é preservada ao recarregar a página.
 
-A interface é de demonstração, sem autenticação ou controle de titularidade.
-Não usa links públicos de compartilhamento do Gradio e mantém a coleta de
+A interface usa autenticação FastAPI com cookie HttpOnly e controle de titularidade
+no backend, inclusive na fila de eventos do Gradio.
+Não usa links públicos de compartilhamento e mantém a coleta de
 analytics desabilitada. O acesso ocorre pela mesma porta do FastAPI.
 
 ## Validação

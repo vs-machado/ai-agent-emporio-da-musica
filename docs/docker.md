@@ -5,6 +5,10 @@ O Docker Compose disponibiliza a API FastAPI e PostgreSQL 16 com pgvector instal
 Copie a configuração de exemplo, preencha `OPENROUTER_API_KEY` para o atendimento
 DeepSeek e `GOOGLE_API_KEY` para a indexação e os embeddings das políticas no `.env`.
 O modelo padrão é `openrouter/deepseek/deepseek-v4.1-flash`.
+Preencha também `AUTH_JWT_SECRET` com um segredo aleatório de pelo menos 32
+caracteres. Veja [Autenticação](autenticacao.md) para gerar o segredo e preparar
+as contas de demonstração. Defina `DEMO_PASSWORD` (10 a 128 caracteres) para a
+senha inicial dessas contas. Use `AUTH_COOKIE_SECURE=true` com HTTPS.
 `CHAT_FALLBACK_MODEL` fica vazio por padrão: não há fallback automático.
 Para habilitá-lo, informe um modelo diferente do primário e a chave de seu provedor.
 
@@ -21,9 +25,10 @@ O Compose executa a preparação automaticamente, nesta ordem:
 1. `db`: aguarda o PostgreSQL ficar saudável.
 2. `migrate`: aplica `alembic upgrade head` e encerra.
 3. `ingest` e `index-policies`: executam em paralelo após as migrations; carregam os CSVs e indexam o manual, respectivamente, e encerram.
-4. `api`: inicia após ambas as etapas terminarem com sucesso.
+4. `seed-users`: executa após `ingest`, provisiona uma conta por e-mail distinto da tabela `customers` (49 contas para 50 clientes na planilha atual), com senha inicial `DEMO_PASSWORD`, e encerra. E-mails repetidos ficam vinculados ao menor ID, sem combinar pedidos. Reexecutar preserva senhas e vínculos já existentes.
+5. `api`: inicia após ingestão, seed e indexação terminarem com sucesso.
 
-Os quatro serviços Python compartilham a definição de build e o nome da imagem pelo bloco `x-app`. Isso permite construir qualquer um deles isoladamente, com reaproveitamento do cache de build. `migrate`, `ingest` e `index-policies` devem aparecer como `Exited (0)`; isso indica conclusão bem-sucedida. Uma falha na preparação impede a inicialização da API nesta sequência. Para investigar, use `docker compose logs migrate ingest index-policies`.
+Os cinco serviços Python compartilham a definição de build e o nome da imagem pelo bloco `x-app`. Isso permite construir qualquer um deles isoladamente, com reaproveitamento do cache de build. `migrate`, `ingest`, `seed-users` e `index-policies` devem aparecer como `Exited (0)`; isso indica conclusão bem-sucedida. Uma falha na preparação impede a inicialização da API nesta sequência. Para investigar, use `docker compose logs migrate ingest seed-users index-policies`.
 
 A API e o banco usam `restart: unless-stopped` para reiniciar após o encerramento do processo ou reinício do Docker, respeitando uma parada manual. Os serviços de preparação usam `restart: "no"`. A política de reinício não é acionada apenas por um healthcheck `unhealthy` e não reexecuta as dependências do Compose.
 

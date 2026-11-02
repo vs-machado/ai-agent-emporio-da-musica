@@ -18,7 +18,7 @@ Construir um agente de atendimento em português que responda clientes com base 
 - A API permanecerá desacoplada da interface, com endpoint de chat reutilizável.
 - Gradio está montado em `/ui` na mesma aplicação FastAPI como interface de demonstração do chat. Seus callbacks usam o mesmo `ChatService` da API, sem chamadas HTTP de loopback.
 - A documentação interativa do FastAPI em `/docs` também será disponibilizada.
-- Uma interface React com autenticação é uma possível evolução, apenas após o MVP estar completo. Ela consumirá a mesma API do FastAPI.
+- O Gradio é preservado; cadastro/login usam uma página HTML leve no FastAPI. A autenticação usa PyJWT, pwdlib/Argon2 e cookie HttpOnly. Veja [Autenticação](autenticacao.md).
 
 O Gradio foi escolhido por permitir uma interface de chat funcional em Python, com pouca implementação de frontend, facilitando a demonstração e a avaliação do agente. Ele é uma interface de protótipo; as regras de negócio e a persistência permanecem no backend para permitir sua substituição futura.
 
@@ -26,7 +26,7 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 
 - LangChain é usado pelo agente de tool calling com `create_agent`: schemas, ciclo modelo-tool-modelo e execução das tools.
 - O histórico é persistido em PostgreSQL em tabelas próprias com SQLAlchemy, identificado por UUID de conversa. A serialização de mensagens do LangChain preserva chamadas, resultados de tools e metadados. Cada turno e sua resposta pública são gravados atomicamente; um lock de linha serializa turnos da mesma conversa.
-- O histórico visual do Gradio não substitui essa persistência. O UUID e os IDs de solicitações pendentes ficam no estado de cada sessão do navegador; retries reutilizam a chave do turno. Nova conversa ou atualização da página inicia outro UUID, sem excluir turnos do banco. Retomada visual por UUID, autenticação e controle de acesso permanecem para evolução posterior.
+- O histórico visual do Gradio não substitui essa persistência. UUIDs e solicitações pendentes ficam no estado da sessão; retries reutilizam a chave do turno. Ao abrir a página, conversas são recuperadas pelo dono autenticado. O backend controla acesso ao histórico e à fila de eventos, inclusive na retomada por UUID.
 - Não será criado um grafo de negócio customizado nem configurado o checkpointer do LangGraph no MVP. Os casos atuais podem ser atendidos com histórico, tools e regras determinísticas; fluxos explícitos em grafo serão reconsiderados se surgirem etapas obrigatórias, espera ou retomada após intervenção humana.
 - Se uma avaliação futura concluir que o LangGraph é essencial para determinadas funções do bot, ele será implementado nos fluxos que necessitarem dele.
 - O backend deverá expor uma abstração de atendimento, como `ChatService`, separando a API e o Gradio da implementação do agente. Tools, regras de negócio, retrieval e persistência terão interfaces desacopladas da orquestração, permitindo introduzir LangGraph futuramente com mudanças concentradas nessa camada.
@@ -85,18 +85,18 @@ O fallback de chat não substitui o serviço de embeddings. Quando o Gemini Embe
 - `search_products`: pesquisa e filtra produtos, consultando preços, status e estoque; também apoia a busca de alternativas.
 - `get_product_details`: consulta detalhes, preço e disponibilidade de um produto.
 - `get_active_promotions`: consulta promoções registradas, permitindo verificar a situação de uma campanha solicitada; informa limitações dos dados disponíveis.
-- `get_order_status`: consulta pedido e rastreamento usando número do pedido e e-mail cadastrado como verificação inicial do protótipo.
+- `get_order_status`: consulta pedido e rastreamento pelo número, restrito ao cliente autenticado no backend. E-mail é opcional para conferência.
 - `search_policy`: recupera trechos do manual para responder dúvidas institucionais e sobre políticas.
 - `register_complaint`: registra reclamações em uma tabela `complaints`, com status inicial `open`, para acompanhamento pela equipe.
 - `calculate_payment`: consulta produtos e promoções para calcular condições de pagamento de um carrinho, sem receber preços informados pelo modelo.
 - `calculate_shipping`: consulta o carrinho e destino, sem tarifas, limites, modalidades ou prazos fixos. Condições locais vêm do manual via `search_policy`; fora da região metropolitana, orienta verificar o valor com um funcionário e informar ao cliente depois.
-- `calculate_refund`: consulta o total registrado para devolução integral ou calcula uma estimativa proporcional para devolução parcial de um pedido composto apenas pelo mesmo produto. Exige número/e-mail correspondentes e confirmação da equipe; não aprova nem executa reembolso.
+- `calculate_refund`: consulta o total registrado para devolução integral ou calcula estimativa proporcional para devolução parcial de um pedido composto apenas pelo mesmo produto. Exige pedido do cliente autenticado e confirmação da equipe; não aprova nem executa reembolso.
 - `get_current_datetime`: fornece data/hora atual e dia da semana no fuso IANA `America/Campo_Grande`, com offset UTC calculado e indicador de horário de verão. Não recebe fuso ou data do modelo e não consulta banco nem provedor externo.
 - `lookup_postal_code`: consulta gratuitamente o ViaCEP para validar o CEP e obter município/UF. O cálculo de frete aceita esse CEP, sem inferir cobertura de outras cidades da região metropolitana.
 
 O fuso da loja é `America/Campo_Grande`, atualmente UTC−4. Será usado `zoneinfo` com a dependência `tzdata` para disponibilizar as regras IANA também em ambientes sem base de fusos do sistema. O relógio do servidor fornece o instante, convertido para a loja independentemente do fuso do host/container. Para perguntas sobre abertura agora ou retorno fora do expediente, o agente combina essa tool com `search_policy`. O relógio não consulta feriados nem horários especiais; sem essas evidências, o agente informa o expediente regular sem garantir abertura ou uma data exata de retorno. A tool não implementa regras de expediente.
 
-Número do pedido e e-mail não comprovam controle da conta e não substituem autenticação. O acesso a dados sensíveis e a identificação real do cliente serão tratados na discussão de guardrails.
+Número do pedido e e-mail não comprovam controle da conta. O vínculo entre conta e cliente vem do backend, nunca de argumentos do modelo. Cadastros públicos não adotam clientes importados; contas demo recebem vínculo explícito por seed.
 
 ### Limitações E Complementos
 
@@ -113,7 +113,7 @@ Número do pedido e e-mail não comprovam controle da conta e não substituem au
 - O CSV de pedidos contém data estimada de entrega, não necessariamente a data real de recebimento. Não se deve usar a estimativa para concluir se o prazo de arrependimento ainda está aberto; o agente deve solicitar ou confirmar a informação necessária.
 - O cadastro da reclamação representa um encaminhamento apenas se houver processo efetivo de acompanhamento pela equipe; sem isso, a interface deve informar a limitação.
 - A tool de reclamações retornará protocolo e status `open`, sem afirmar envio à equipe nem garantir o prazo de 24 horas úteis enquanto o fluxo humano não estiver integrado. Repetições com a mesma chave de requisição não devem criar reclamações duplicadas.
-- A verificação inicial de pedido exige ID e e-mail correspondentes e retorna apenas os dados necessários para atendimento, sem listar clientes. Isso não implementa autenticação real.
+- A consulta de pedido exige cliente autenticado no contexto do turno e retorna somente dados necessários ao atendimento, sem listar clientes. Conhecer ID e e-mail de terceiros não concede acesso.
 - `search_policy` usa uma interface de retrieval injetável, implementada com LlamaIndex/pgvector e fallback textual. A ausência do serviço ou de um índice ativo retorna indisponibilidade, sem respostas fabricadas nem uso dos CSVs como base de políticas.
 - Perguntas sobre acessórios e assuntos fora do escopo podem ser tratadas pelo agente com base nas políticas, sem uma tool específica.
 

@@ -34,7 +34,7 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
 | `search_products` | 2 | Nome, categoria, marca no nome, preço atual e disponibilidade; paginação limitada |
 | `get_product_details` | 2, 4 | Preços, estoque, specs e alternativas disponíveis da mesma categoria |
 | `get_active_promotions` | 4 | Campanhas ativas e consulta opcional de inativas, sem inventar vigência |
-| `get_order_status` | 5, 6, 7, 9 | Pedido e rastreio após conferir ID e e-mail; não aprova trocas ou garantias |
+| `get_order_status` | 5, 6, 7, 9 | Pedido e rastreio da conta autenticada; não aprova trocas ou garantias |
 | `calculate_refund` | 6 | Total registrado para devolução integral ou estimativa proporcional de unidades iguais, sempre sujeita à confirmação |
 | `calculate_payment` | 3, 4 | Carrinho consultado, PIX não cumulativo, crédito, débito, boleto e elegibilidade de combinação |
 | `calculate_shipping` | 5 | Consulta carrinho/destino; orienta consultar o manual local ou verificar o frete com funcionário |
@@ -90,11 +90,12 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
   `staff_quote_required=true`, sem afirmar contato ou agendamento concluídos.
   Pesquisa de medidas e eventual tabela regional ficam pendentes.
   Veja [Consultas externas](consultas-externas.md).
-- ID e e-mail são a verificação inicial de pedidos, não autenticação real.
-  E-mail errado e pedido inexistente têm a mesma resposta. Cadastro de clientes,
+- Consultas de pedidos exigem o cliente autenticado no contexto do backend.
+  O e-mail é opcional para conferência. Pedido alheio, inexistente e e-mail errado
+  têm a mesma resposta. Cadastro de clientes,
   notas internas e preços unitários históricos não são retornados.
 - A previsão de entrega nunca é convertida em data real de recebimento.
-- `calculate_refund` exige pedido e e-mail correspondentes. Omitir `items` ou usar
+- `calculate_refund` exige pedido pertencente ao cliente autenticado. Omitir `items` ou usar
   `null` significa devolução integral; uma lista identifica os produtos e quantidades
   desejados, sem duplicar produtos nem exceder o que foi comprado. Selecionar todos
   os itens e quantidades também corresponde à devolução integral.
@@ -113,7 +114,7 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
   `payment_verified`, `eligibility_checked`, `refund_approved` e `refund_executed`
   permanecem falsas. A operação não altera pedidos, estoque ou registros financeiros.
 - Reclamações exigem e-mail e relato. Pedido é opcional e, quando informado,
-  precisa corresponder ao e-mail. O chamador deve gerar uma `request_id` UUID
+  precisa pertencer ao cliente autenticado e corresponder ao e-mail. O chamador deve gerar uma `request_id` UUID
   por solicitação e reutilizá-la nos retries. O agente não deve solicitar essa
   chave ao cliente; a integração futura deve fornecer e preservar esse contexto.
   A mesma chave com dados diferentes retorna `request_conflict` sem alterar o registro.
@@ -140,8 +141,8 @@ O lifespan da API já constrói o retriever e as tools em `app.state`, sem index
 o PDF ou chamar provedores na inicialização. Sem índice ativo, a consulta retorna
 `unavailable`; sem chave de embeddings, um índice existente pode ser consultado
 pelo fallback textual. O agente e o `ChatService` já estão integrados; veja
-[Agente de atendimento](agente.md). Histórico persistente, API de chat, autenticação
-e processo humano continuam como etapas próprias. Não há busca baseada no documento
+[Agente de atendimento](agente.md) e [Autenticação](autenticacao.md).
+O processo humano continua como integração futura. Não há busca baseada no documento
 de casos ou nos CSVs.
 
 ## Verificação

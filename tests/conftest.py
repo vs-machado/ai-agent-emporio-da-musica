@@ -64,7 +64,8 @@ def database_engine():
 def engine(database_engine):
     statement = text(
         "TRUNCATE data_policy_vectors, policy_sections, policy_indexes, "
-        "conversation_turns, conversations, complaints, promotions, order_items, orders, "
+        "conversation_turns, conversations, ui_sessions, users, complaints, promotions, "
+        "order_items, orders, "
         "products, customers, categories"
     )
     with database_engine.begin() as connection:

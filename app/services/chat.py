@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.conversation import Conversation, ConversationTurn
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.auth import Principal, current_principal
 from app.services.errors import ChatHistoryError, ChatHistoryLimitError, ChatRequestConflictError
 
 UNAVAILABLE_MESSAGE = (
@@ -88,10 +89,10 @@ class ChatService:
         self.session_factory = session_factory
 
     def load_conversations(
-        self, conversation_ids: Sequence[UUID]
+        self, conversation_ids: Sequence[UUID] | None = None, *, user: Principal | None = None
     ) -> dict[UUID, list[dict[str, str]]]:
-        """Recupera somente mensagens públicas das conversas explicitamente solicitadas."""
-        if self.session_factory is None or not conversation_ids:
+        """Recupera mensagens públicas filtradas por dono e, opcionalmente, por UUIDs."""
+        if self.session_factory is None or conversation_ids == []:
             return {}
         with self.session_factory() as session:
             rows = session.execute(
@@ -100,8 +101,14 @@ class ChatService:
                     ConversationTurn.message,
                     ConversationTurn.response,
                 )
-                .where(ConversationTurn.conversation_id.in_(conversation_ids))
-                .order_by(ConversationTurn.conversation_id, ConversationTurn.position)
+                .join(Conversation)
+                .where(Conversation.user_id == (user.user_id if user else None))
+                .where(
+                    ConversationTurn.conversation_id.in_(conversation_ids)
+                    if conversation_ids is not None
+                    else True
+                )
+                .order_by(Conversation.created_at, ConversationTurn.position)
             )
             conversations: dict[UUID, list[dict[str, str]]] = {}
             for conversation_id, message, response in rows:
@@ -113,7 +120,22 @@ class ChatService:
                 )
             return conversations
 
-    def chat(self, request: ChatRequest, history: Sequence[BaseMessage] = ()) -> ChatTurn:
+    def chat(
+        self,
+        request: ChatRequest,
+        history: Sequence[BaseMessage] = (),
+        *,
+        user: Principal | None = None,
+    ) -> ChatTurn:
+        token = current_principal.set(user)
+        try:
+            return self._chat(request, history, user=user)
+        finally:
+            current_principal.reset(token)
+
+    def _chat(
+        self, request: ChatRequest, history: Sequence[BaseMessage], *, user: Principal | None
+    ) -> ChatTurn:
         """Carrega a conversa e grava atomicamente as mensagens completas do turno.
 
         Args:
@@ -135,14 +157,19 @@ class ChatService:
             # O insert concorrente aguarda a criação da conversa; o lock dura todo o turno.
             session.execute(
                 insert(Conversation)
-                .values(conversation_id=request.conversation_id)
+                .values(
+                    conversation_id=request.conversation_id,
+                    user_id=user.user_id if user else None,
+                )
                 .on_conflict_do_nothing(index_elements=["conversation_id"])
             )
-            session.execute(
+            conversation = session.execute(
                 select(Conversation)
                 .where(Conversation.conversation_id == request.conversation_id)
                 .with_for_update()
             ).scalar_one()
+            if conversation.user_id != (user.user_id if user else None):
+                raise ConversationAccessError("Conversa não encontrada.")
             turns = session.scalars(
                 select(ConversationTurn)
                 .where(ConversationTurn.conversation_id == request.conversation_id)
@@ -186,3 +213,21 @@ class ChatService:
                 [HumanMessage(content=request.message), AIMessage(content=UNAVAILABLE_MESSAGE)],
             )
         return self.agent.run(request, history)
+
+
+class ConversationAccessError(Exception):
+    """Conversa inexistente ou pertencente a outra conta."""
+
+
+class UserChatService:
+    """Fachada por requisição para os callbacks do Gradio."""
+
+    def __init__(self, service: ChatService, user: Principal):
+        self.service = service
+        self.user = user
+
+    def chat(self, request: ChatRequest) -> ChatTurn:
+        return self.service.chat(request, user=self.user)
+
+    def load_conversations(self, ids=None):
+        return self.service.load_conversations(ids, user=self.user)
