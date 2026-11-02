@@ -16,7 +16,7 @@ Construir um agente de atendimento em português que responda clientes com base 
 
 - FastAPI será o backend HTTP e concentrará a lógica de aplicação.
 - A API permanecerá desacoplada da interface, com endpoint de chat reutilizável.
-- Gradio será montado na mesma aplicação FastAPI como interface de demonstração do chat.
+- Gradio está montado em `/ui` na mesma aplicação FastAPI como interface de demonstração do chat. Seus callbacks usam o mesmo `ChatService` da API, sem chamadas HTTP de loopback.
 - A documentação interativa do FastAPI em `/docs` também será disponibilizada.
 - Uma interface React com autenticação é uma possível evolução, apenas após o MVP estar completo. Ela consumirá a mesma API do FastAPI.
 
@@ -26,7 +26,7 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 
 - LangChain é usado pelo agente de tool calling com `create_agent`: schemas, ciclo modelo-tool-modelo e execução das tools.
 - O histórico é persistido em PostgreSQL em tabelas próprias com SQLAlchemy, identificado por UUID de conversa. A serialização de mensagens do LangChain preserva chamadas, resultados de tools e metadados. Cada turno e sua resposta pública são gravados atomicamente; um lock de linha serializa turnos da mesma conversa.
-- O histórico visual do Gradio não substitui essa persistência. A retomada de uma conversa na interface dependerá de como o ID de conversa for associado à sessão; autenticação e controle de acesso serão definidos posteriormente.
+- O histórico visual do Gradio não substitui essa persistência. O UUID e os IDs de solicitações pendentes ficam no estado de cada sessão do navegador; retries reutilizam a chave do turno. Nova conversa ou atualização da página inicia outro UUID, sem excluir turnos do banco. Retomada visual por UUID, autenticação e controle de acesso permanecem para evolução posterior.
 - Não será criado um grafo de negócio customizado nem configurado o checkpointer do LangGraph no MVP. Os casos atuais podem ser atendidos com histórico, tools e regras determinísticas; fluxos explícitos em grafo serão reconsiderados se surgirem etapas obrigatórias, espera ou retomada após intervenção humana.
 - Se uma avaliação futura concluir que o LangGraph é essencial para determinadas funções do bot, ele será implementado nos fluxos que necessitarem dele.
 - O backend deverá expor uma abstração de atendimento, como `ChatService`, separando a API e o Gradio da implementação do agente. Tools, regras de negócio, retrieval e persistência terão interfaces desacopladas da orquestração, permitindo introduzir LangGraph futuramente com mudanças concentradas nessa camada.
@@ -37,7 +37,7 @@ O Gradio foi escolhido por permitir uma interface de chat funcional em Python, c
 
 - `ChatService` recebe `ChatRequest` com mensagem, `conversation_id` e `request_id` UUID, e um agente injetável. Retorna `ChatTurn`, com resposta pública e as novas mensagens internas do turno, incluindo chamadas e resultados de tools. API e interface consomem a mesma fachada.
 - Com persistência configurada, o serviço carrega o histórico pelo UUID e rejeita histórico manual. Sem persistência, o chamador interno pode fornecer turnos completos. A validação preserva pares de chamadas/resultados sem truncamento silencioso. Repetir conversa, solicitação e texto devolve o turno salvo, sem executar modelo ou tools novamente.
-- `POST /chat` retorna apenas `ChatResponse`, com execução síncrona na thread pool do FastAPI. Turnos concluídos usam HTTP 200, incluindo `unavailable` e `limit_reached`; conflitos de solicitação usam 409, limite de histórico 422, histórico inválido 500 e falhas de persistência 503. O contrato está em `docs/api-chat.md`. O Gradio permanece pendente.
+- `POST /chat` retorna apenas `ChatResponse`, com execução síncrona na thread pool do FastAPI. Turnos concluídos usam HTTP 200, incluindo `unavailable` e `limit_reached`; conflitos de solicitação usam 409, limite de histórico 422, histórico inválido 500 e falhas de persistência 503. O contrato está em `docs/api-chat.md`. O Gradio mostra somente mensagem do cliente e resposta final, com callbacks síncronos nos workers e controles de envio, nova conversa e retry; seu uso está em `docs/interface-chat.md`.
 - O lifespan cria `app.state.chat_service` sem chamar provedores. Sem `GOOGLE_API_KEY`, o serviço fica disponível para composição, mas retorna atendimento `unavailable` sem inferência nem respostas comerciais simuladas.
 - O prompt em português fica em `app/agents/prompt.py`. Ele orienta uso das fontes, escopo, ambiguidades e limitações comerciais. A aderência do modelo real ainda precisará ser avaliada; o prompt não substitui autenticação ou validações determinísticas dos serviços.
 - A apresentação do atendimento usará nome já informado ou contexto confiável, empatia e encerramento cordial, sem exigir identificação apenas para personalizar. O prompt explicita estados dos produtos, preço original/desconto/preço promocional de ofertas ativas enquanto durarem os estoques e consultas complementares para exceções. Totais sem frete e preços atuais não serão apresentados como total entregue ou preço histórico de compra; exclusão de dados dependerá do canal humano, sem simular execução.
