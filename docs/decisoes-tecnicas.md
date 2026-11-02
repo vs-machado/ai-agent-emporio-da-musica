@@ -85,7 +85,7 @@ O fallback de chat não substitui o serviço de embeddings. Quando o Gemini Embe
 - `search_products`: pesquisa e filtra produtos, consultando preços, status e estoque; também apoia a busca de alternativas.
 - `get_product_details`: consulta detalhes, preço e disponibilidade de um produto.
 - `get_active_promotions`: consulta promoções registradas, permitindo verificar a situação de uma campanha solicitada; informa limitações dos dados disponíveis.
-- `get_order_status`: consulta pedido e rastreamento pelo número, restrito ao cliente autenticado no backend. E-mail é opcional para conferência.
+- `get_order_status`: sem parâmetros, lista pedidos e rastreamento do cliente autenticado, com paginação. Número e e-mail são filtros opcionais, não requisitos de atendimento. A LLM recebe e-mail e vínculo autenticados do backend no system prompt; o serviço verifica a titularidade no runtime.
 - `search_policy`: recupera trechos do manual para responder dúvidas institucionais e sobre políticas.
 - `register_complaint`: registra reclamações em uma tabela `complaints`, com status inicial `open`, para acompanhamento pela equipe.
 - `calculate_payment`: consulta produtos e promoções para calcular condições de pagamento de um carrinho, sem receber preços informados pelo modelo.

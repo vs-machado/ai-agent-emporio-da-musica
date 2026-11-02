@@ -91,12 +91,19 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
   Pesquisa de medidas e eventual tabela regional ficam pendentes.
   Veja [Consultas externas](consultas-externas.md).
 - Consultas de pedidos exigem o cliente autenticado no contexto do backend.
+  `get_order_status` não exige parâmetros: sem `order_id`, retorna `orders`,
+  ordenados por data/ID decrescentes, e `has_more`. Use `limit` (1–20, padrão 20)
+  e `offset` (0–10000) para paginar. Com `order_id`, preserva a resposta detalhada
+  de um único pedido. Nunca seleciona automaticamente um pedido para reembolso.
+  O modelo recebe e-mail e vínculo autenticados no system prompt; o serviço usa
+  a identidade do runtime para filtrar o banco, independentemente de argumentos.
   O e-mail é opcional para conferência. Pedido alheio, inexistente e e-mail errado
   têm a mesma resposta. Cadastro de clientes,
   notas internas e preços unitários históricos não são retornados.
 - A previsão de entrega nunca é convertida em data real de recebimento.
 - `calculate_refund` exige pedido pertencente ao cliente autenticado. Omitir `items` ou usar
-  `null` significa devolução integral; uma lista identifica os produtos e quantidades
+  `null` significa devolução integral; o ID deve vir de `get_order_status`, sem
+  exigir que o cliente o informe. Uma lista em `items` identifica os produtos e quantidades
   desejados, sem duplicar produtos nem exceder o que foi comprado. Selecionar todos
   os itens e quantidades também corresponde à devolução integral.
 - Na devolução integral, `refund_amount_brl` referencia `orders.total_brl` e

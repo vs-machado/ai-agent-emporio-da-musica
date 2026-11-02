@@ -131,11 +131,23 @@ curl -b /tmp/emporio-cookies -H 'Origin: http://localhost:8000' \
   contexto do turno. O runtime do LangChain transmite a identidade às tools; o
   modelo não a escolhe. E-mail é conferência opcional em consultas, nunca credencial.
   Reclamações mantêm contato obrigatório e idempotência por usuário.
+- A LLM recebe e-mail e `customer_id` autenticados em um bloco do system prompt
+  gerado pelo backend em cada chamada, inclusive no fallback. Esses dados não vêm
+  do texto do cliente e não são gravados como mensagens no histórico do diálogo.
+- `get_order_status` aceita entrada vazia: lista apenas pedidos da conta, com
+  produtos, datas, estados e rastreamento. `order_id` é filtro opcional;
+  `limit` (1–20, padrão 20) e `offset` permitem paginação. Havendo mais de um pedido
+  compatível, o agente esclarece pelo produto/data, sem exigir número do cliente.
+  Reembolsos e reclamações usam os IDs reais obtidos nessa consulta.
 - Conversas anônimas anteriores à migration permanecem sem dono e não aparecem
   na interface autenticada nem são adotadas por novas contas.
 
 CLI/benchmarks sem identidade continuam úteis para catálogo e políticas, mas
 não têm autorização para consultar pedidos. A API pública sempre exige login.
+
+O manual não obriga informar número do pedido: seção 7.2 (páginas 6–7) orienta
+consultar o sistema; seção 5.3 (página 5) descreve o envio de rastreamento, sem
+exigir esse número. A descoberta dos pedidos usa a conta autenticada.
 
 ## Testes
 

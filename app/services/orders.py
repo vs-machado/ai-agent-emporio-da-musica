@@ -48,36 +48,69 @@ class OrderService:
             Falhas não distinguem pedido alheio, inexistente ou e-mail errado.
         """
         with self.sessions() as session:
+            if request.order_id is None:
+                principal = current_principal.get()
+                orders = []
+                if principal is not None and principal.customer_id is not None:
+                    orders = session.scalars(
+                        select(Order)
+                        .join(Customer)
+                        .where(
+                            Order.customer_id == principal.customer_id,
+                            func.lower(Customer.email) == request.email.casefold()
+                            if request.email
+                            else True,
+                        )
+                        .order_by(Order.order_date.desc(), Order.order_id.desc())
+                        .limit(request.limit + 1)
+                        .offset(request.offset)
+                    ).all()
+                return {
+                    "status": "ok" if orders else "not_found",
+                    "orders": [
+                        self._order_details(session, order) for order in orders[: request.limit]
+                    ],
+                    "has_more": len(orders) > request.limit,
+                    "message": (
+                        "Pedidos da conta autenticada. Identifique pelo produto, data ou estado; "
+                        "se houver dúvida, peça ao cliente para escolher sem exigir o número."
+                        if orders
+                        else "Nenhum pedido localizado para esta conta."
+                    ),
+                }
             order = self._verified_order(session, request.order_id, request.email)
             if order is None:
                 return dict(ORDER_NOT_FOUND)
-            items = session.execute(
-                select(OrderItem, Product.name)
-                .join(Product)
-                .where(OrderItem.order_id == order.order_id)
-                .order_by(OrderItem.product_id)
-            )
-            return {
-                "status": "ok",
-                "order_id": order.order_id,
-                "order_status": order.status,
-                "order_date": order.order_date.isoformat(),
-                "total_brl": money(order.total_brl),
-                "payment_method": order.payment_method,
-                "tracking_code": order.tracking_code,
-                "estimated_delivery": order.estimated_delivery.isoformat()
-                if order.estimated_delivery
-                else None,
-                "actual_delivery_date": None,
-                "items": [
-                    {"product_id": item.product_id, "name": name, "quantity": item.quantity}
-                    for item, name in items
-                ],
-                "limitations": (
-                    "A previsão não comprova recebimento. Não é possível aprovar troca, "
-                    "devolução ou garantia sem confirmar datas e condições necessárias."
-                ),
-            }
+            return {"status": "ok", **self._order_details(session, order)}
+
+    @staticmethod
+    def _order_details(session: Session, order: Order) -> dict:
+        items = session.execute(
+            select(OrderItem, Product.name)
+            .join(Product)
+            .where(OrderItem.order_id == order.order_id)
+            .order_by(OrderItem.product_id)
+        )
+        return {
+            "order_id": order.order_id,
+            "order_status": order.status,
+            "order_date": order.order_date.isoformat(),
+            "total_brl": money(order.total_brl),
+            "payment_method": order.payment_method,
+            "tracking_code": order.tracking_code,
+            "estimated_delivery": order.estimated_delivery.isoformat()
+            if order.estimated_delivery
+            else None,
+            "actual_delivery_date": None,
+            "items": [
+                {"product_id": item.product_id, "name": name, "quantity": item.quantity}
+                for item, name in items
+            ],
+            "limitations": (
+                "A previsão não comprova recebimento. Não é possível aprovar troca, "
+                "devolução ou garantia sem confirmar datas e condições necessárias."
+            ),
+        }
 
     def calculate_refund(self, request: RefundQuote) -> dict:
         """Simula um valor de referência sem aprovar ou executar reembolso.

@@ -38,10 +38,18 @@ não há operação de exclusão ou encaminhamento automático.
 `calculate_refund` consulta o total registrado para uma devolução integral ou
 calcula uma estimativa proporcional quando o pedido inteiro contém apenas um
 produto. Não usa preços atuais nem interpreta essa convenção como regra do manual.
-O cliente deve informar o número do pedido e esclarecer se quer devolver
-tudo ou quais produtos e quantidades. Pedidos cancelados exigem verificação de
+O agente consulta `get_order_status` sem parâmetros para localizar os pedidos da
+conta autenticada, sem exigir número ou e-mail do cliente. Havendo ambiguidade,
+pede que o cliente escolha pelo produto ou data; o ID interno usado em reembolsos
+vem da consulta. O cliente esclarece se quer devolver tudo ou quais produtos e
+quantidades. Pedidos cancelados exigem verificação de
 eventual pagamento; devoluções parciais com produtos diferentes não recebem rateio.
 Todos esses resultados exigem confirmação da equipe, sem aprovar ou executar reembolso.
+
+O middleware acrescenta ao system prompt de cada chamada o e-mail e o
+`customer_id` da identidade validada pelo backend. Esse contexto é mantido no
+fallback e não é persistido como mensagem do diálogo. Não comprova compras: o
+agente deve consultar a tool, que aplica o filtro de titularidade no banco.
 
 Para referências a hoje/agora e expediente atual, o agente dispõe de
 `get_current_datetime`, sem parâmetros, no fuso `America/Campo_Grande` (atualmente

@@ -8,11 +8,23 @@ from pydantic import Field, model_validator
 from app.schemas.base import Email, Identifier, Input
 
 
-class OrderLookup(Input):
-    order_id: Identifier = Field(description="Número do pedido informado pelo cliente")
+class OrderReference(Input):
+    order_id: Identifier | None = Field(
+        default=None,
+        description="ID opcional; omita para consultar os pedidos da conta autenticada",
+    )
     email: Email | None = Field(
         default=None,
         description="E-mail opcional para conferência; acesso depende da conta autenticada",
+    )
+
+
+class OrderLookup(OrderReference):
+    limit: Annotated[int, Field(strict=True, ge=1, le=20)] = Field(
+        default=20, description="Quantidade de pedidos por página quando não houver order_id"
+    )
+    offset: Annotated[int, Field(strict=True, ge=0, le=10000)] = Field(
+        default=0, description="Deslocamento para consultar outras páginas de pedidos"
     )
 
 
@@ -23,7 +35,10 @@ class RefundItem(Input):
     )
 
 
-class RefundQuote(OrderLookup):
+class RefundQuote(OrderReference):
+    order_id: Identifier = Field(
+        description="ID do pedido retornado por get_order_status; não exigir número do cliente"
+    )
     items: Annotated[list[RefundItem], Field(min_length=1, max_length=20)] | None = Field(
         default=None,
         description=(
