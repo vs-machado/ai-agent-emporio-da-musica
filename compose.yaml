@@ -1,12 +1,15 @@
 x-app: &app
   build: .
   image: ${COMPOSE_PROJECT_NAME:-emporio-da-musica}-app
-  environment:
+  environment: &app-environment
     POSTGRES_DB: ${POSTGRES_DB:?Defina POSTGRES_DB no arquivo .env}
     POSTGRES_USER: ${POSTGRES_USER:?Defina POSTGRES_USER no arquivo .env}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
     POSTGRES_HOST: db
     POSTGRES_PORT: 5432
+    AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Defina AUTH_JWT_SECRET com pelo menos 32 caracteres}
+    AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+    AUTH_TOKEN_MINUTES: ${AUTH_TOKEN_MINUTES:-120}
     GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
     OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     CHAT_PRIMARY_MODEL: ${CHAT_PRIMARY_MODEL:-openrouter/deepseek/deepseek-v4.1-flash}
@@ -44,6 +47,16 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+  seed-users:
+    <<: *app
+    environment:
+      <<: *app-environment
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?Defina DEMO_PASSWORD com 10 a 128 caracteres}
+    command: ["python", "-m", "app.seed_users"]
+    restart: "no"
+    depends_on:
+      ingest:
+        condition: service_completed_successfully
   api:
     <<: *app
     restart: unless-stopped
@@ -55,6 +68,8 @@ services:
       ingest:
         condition: service_completed_successfully
       index-policies:
+        condition: service_completed_successfully
+      seed-users:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10)"]

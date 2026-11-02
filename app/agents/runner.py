@@ -20,12 +20,14 @@ from app.agents.models import AgentModels, ModelOutputError, is_recoverable
 from app.agents.prompt import SYSTEM_PROMPT
 from app.config import Settings
 from app.schemas.chat import ChatAction, ChatRequest, ChatResponse
+from app.services.auth import Principal, current_principal
 from app.services.chat import LIMIT_MESSAGE, UNAVAILABLE_MESSAGE, ChatTurn
 
 
 @dataclass
 class TurnContext:
     request_id: UUID
+    principal: Principal | None = None
     model_calls: int = 0
     tool_calls: int = 0
     used_fallback: bool = False
@@ -145,12 +147,15 @@ class AttendanceMiddleware(AgentMiddleware):
                 },
             }
             request = request.override(tool_call=call)
+        token = current_principal.set(context.principal)
         try:
             result = handler(request)
         except (ValidationError, ToolException):
             result = self._tool_error(request, "invalid_input", "Confira os argumentos da tool.")
         except (SQLAlchemyError, OSError, TimeoutError):
             result = self._tool_error(request, "unavailable", "Consulta indisponível no momento.")
+        finally:
+            current_principal.reset(token)
         if isinstance(result, ToolMessage):
             try:
                 payload = json.loads(result.content)
@@ -203,7 +208,7 @@ class LangChainChatAgent:
             Resposta e todas as novas mensagens. Falhas do provedor preservam resultados
             de operações já executadas; o fallback não reexecuta o turno nem as tools.
         """
-        context = TurnContext(request_id=request.request_id)
+        context = TurnContext(request_id=request.request_id, principal=current_principal.get())
         messages = [m.model_copy(deep=True) for m in history]
         messages.append(HumanMessage(content=request.message))
         result = self.graph.invoke(

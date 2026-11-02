@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     postgres_password: SecretStr
     postgres_host: str = "localhost"
     postgres_port: int = 5432
+    auth_jwt_secret: SecretStr | None = None
+    auth_cookie_secure: bool = False
+    auth_token_minutes: int = Field(default=120, ge=1, le=1440)
+
     google_api_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
     chat_primary_model: str = "openrouter/deepseek/deepseek-v4.1-flash"
@@ -29,6 +33,13 @@ class Settings(BaseSettings):
     rag_top_k: int = Field(default=5, ge=1, le=30)
     rag_context_tokens: int = Field(default=2000, ge=512, le=16000)
     rag_chunk_tokens: int = Field(default=1000, ge=256, le=8000)
+
+    @field_validator("auth_jwt_secret")
+    @classmethod
+    def validate_auth_secret(cls, value):
+        if value is not None and len(value.get_secret_value()) < 32:
+            raise ValueError("AUTH_JWT_SECRET deve ter pelo menos 32 caracteres")
+        return value
 
     @field_validator("rag_embedding_dimensions", mode="before")
     @classmethod

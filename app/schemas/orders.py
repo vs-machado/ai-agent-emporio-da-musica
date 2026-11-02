@@ -10,8 +10,9 @@ from app.schemas.base import Email, Identifier, Input
 
 class OrderLookup(Input):
     order_id: Identifier = Field(description="Número do pedido informado pelo cliente")
-    email: Email = Field(
-        description="E-mail cadastrado informado pelo cliente para verificar o pedido"
+    email: Email | None = Field(
+        default=None,
+        description="E-mail opcional para conferência; acesso depende da conta autenticada",
     )
 
 

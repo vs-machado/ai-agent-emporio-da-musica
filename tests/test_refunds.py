@@ -1,6 +1,7 @@
 """Referências de reembolso com dados históricos e sem operações financeiras."""
 
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.ingestion.loader import ingest
 from app.models import Customer, Order, OrderItem, Product
 from app.schemas.orders import RefundQuote
+from app.services.auth import Principal, current_principal
 from app.tools import build_tools
 
 
@@ -41,15 +43,23 @@ def test_refund_does_not_accept_model_supplied_amount():
 def refund_context(engine):
     ingest(engine)
     tool = next(t for t in build_tools(sessionmaker(engine)) if t.name == "calculate_refund")
+    token = current_principal.set(None)
 
     def request(order_id, **kwargs):
         with Session(engine) as session:
             email = session.scalar(
                 select(Customer.email).join(Order).where(Order.order_id == order_id)
             )
+            customer_id = session.scalar(
+                select(Order.customer_id).where(Order.order_id == order_id)
+            )
+            current_principal.set(Principal(uuid4(), customer_id, email))
         return {"order_id": order_id, "email": email, **kwargs}
 
-    return tool, request
+    try:
+        yield tool, request
+    finally:
+        current_principal.reset(token)
 
 
 @pytest.mark.parametrize("order_id,expected", [(1, "11499.00"), (3, "3450.00"), (15, "8348.00")])
