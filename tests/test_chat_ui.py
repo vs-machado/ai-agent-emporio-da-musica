@@ -189,7 +189,7 @@ def test_independent_browser_sessions_do_not_share_state():
 
 def test_gradio_event_processes_state_and_only_serializes_public_messages():
     agent = RecordingAgent()
-    demo = build_chat_ui(lambda: ChatService(agent))
+    demo = build_chat_ui(lambda: ChatService(agent), authenticated=False)
     state = SessionState(demo)
     send = next(fn for fn in demo.fns.values() if fn.fn.__name__ == "send")
     state_id = next(
@@ -353,20 +353,33 @@ def test_restore_handles_invalid_browser_data_and_sanitizes_database_failure():
 
 
 def test_mounted_gradio_preserves_lifespan_and_http_api():
+    from app.routes.auth import get_current_user
+    from app.services.auth import Principal
+
+    principal = Principal(uuid4(), None, "demo@example.test")
+
+    class FakeAuth:
+        def authenticate(self, token):
+            return principal if token == "valid" else None
+
     lifecycle = []
 
     @asynccontextmanager
     async def lifespan(app):
         lifecycle.append("started")
         app.state.chat_service = ChatService()
+        app.state.auth_service = FakeAuth()
         yield
         lifecycle.append("stopped")
 
     app = FastAPI(lifespan=lifespan)
     app.include_router(router)
+    app.dependency_overrides[get_current_user] = lambda: principal
     app = mount_chat_ui(app)
     with TestClient(app) as client:
         assert lifecycle == ["started"]
+        assert client.get("/ui/", follow_redirects=False).status_code == 401
+        client.cookies.set("emporio_session", "valid")
         page = client.get("/ui/")
         assert page.status_code == 200
         assert "Empório da Música" in page.text

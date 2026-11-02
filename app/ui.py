@@ -6,11 +6,13 @@ from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
 import gradio as gr
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import ValidationError
 
+from app.routes.auth import get_current_user
 from app.schemas.chat import ChatRequest
-from app.services.chat import ChatService
+from app.services.auth import COOKIE_NAME
+from app.services.chat import ChatService, ConversationAccessError, UserChatService
 from app.services.errors import ChatHistoryError, ChatHistoryLimitError, ChatRequestConflictError
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,7 @@ class ChatSession:
 
 @dataclass
 class ChatWorkspace:
+    user_id: UUID | None = None
     active: UUID = field(default_factory=uuid4)
     conversations: dict[UUID, ChatSession] = field(default_factory=dict)
 
@@ -102,7 +105,7 @@ class ChatUI:
             session.pending = None
             session.blocked = True
             status = "O histórico atingiu o limite de mensagens. Inicie uma nova conversa."
-        except (ChatHistoryError, ChatRequestConflictError):
+        except (ChatHistoryError, ChatRequestConflictError, ConversationAccessError):
             session.pending = None
             session.blocked = True
             status = "Não foi possível continuar este atendimento. Inicie uma nova conversa."
@@ -233,20 +236,82 @@ class ConversationUI:
             yield self.view(workspace, output[6])
 
 
-def build_chat_ui(service: Callable[[], ChatService]) -> gr.Blocks:
-    controller = ConversationUI(service)
+class AuthenticatedConversationUI:
+    """Resolve a identidade novamente em cada evento, inclusive após troca de conta."""
+
+    def __init__(self, service, authenticate=get_current_user):
+        self.service = service
+        self.authenticate = authenticate
+
+    def scope(self, request: gr.Request, workspace=None):
+        user = self.authenticate(request.request)
+        controller = ConversationUI(lambda: UserChatService(self.service(), user))
+        if workspace is None or workspace.user_id != user.user_id:
+            workspace = ChatWorkspace(user_id=user.user_id)
+        return controller, workspace
+
+    def restore(self, saved: dict | None, request: gr.Request):
+        controller, workspace = self.scope(request)
+        try:
+            histories = controller.chat.service().load_conversations()
+        except Exception:
+            logger.error("Falha ao recuperar conversas autenticadas")
+            return controller.view(
+                workspace, "Não foi possível recuperar as conversas. Reabra a página."
+            )
+        if histories:
+            workspace.conversations = {
+                key: ChatSession(conversation_id=key, messages=messages)
+                for key, messages in histories.items()
+            }
+            workspace.active = next(reversed(histories))
+        return controller.view(workspace, "Envie uma mensagem para continuar o atendimento.")
+
+    def send(self, message: str, workspace: ChatWorkspace | None, request: gr.Request):
+        controller, workspace = self.scope(request, workspace)
+        yield from controller.send(message, workspace)
+
+    def retry(self, workspace: ChatWorkspace | None, request: gr.Request):
+        controller, workspace = self.scope(request, workspace)
+        yield from controller.retry(workspace)
+
+    def new_conversation(self, workspace: ChatWorkspace | None, request: gr.Request):
+        controller, workspace = self.scope(request, workspace)
+        return controller.new_conversation(workspace)
+
+    def select(self, conversation_id: str, workspace: ChatWorkspace | None, request: gr.Request):
+        controller, workspace = self.scope(request, workspace)
+        return controller.select(conversation_id, workspace)
+
+    def open_conversation(
+        self, conversation_id: str, workspace: ChatWorkspace | None, request: gr.Request
+    ):
+        controller, workspace = self.scope(request, workspace)
+        return controller.open_conversation(conversation_id, workspace)
+
+
+def build_chat_ui(
+    service: Callable[[], ChatService],
+    *,
+    authenticated: bool = True,
+    authenticate=get_current_user,
+) -> gr.Blocks:
+    controller = (
+        AuthenticatedConversationUI(service, authenticate)
+        if authenticated
+        else ConversationUI(service)
+    )
     with gr.Blocks(title="Empório da Música — Atendimento", analytics_enabled=False) as demo:
         gr.Markdown(
             "# Empório da Música\nOlá! Posso ajudar com instrumentos, pedidos e políticas da loja."
         )
-        session = gr.State()
-        # A chave estável mantém o índice local após reiniciar a aplicação.
-        # BrowserState não autentica o usuário; armazena somente UUIDs de conversas.
-        browser = gr.BrowserState(
-            {"ids": [], "active": None},
-            storage_key="emporio.conversations.v1",
-            secret="emporio-conversations-v1",
+        gr.HTML(
+            '<form action="/auth/logout" method="post">'
+            '<button type="submit">Sair da conta</button></form>'
         )
+        session = gr.State()
+        # O índice de conversas é carregado do banco pela identidade autenticada.
+        browser = gr.State({"ids": [], "active": None})
         with gr.Sidebar(label="Conversas", open=True):
             new = gr.Button("+ Nova conversa", variant="primary")
             conversations = gr.Radio(choices=[], label="Suas conversas", interactive=True)
@@ -331,12 +396,27 @@ def build_chat_ui(service: Callable[[], ChatService]) -> gr.Blocks:
 
 
 def mount_chat_ui(app: FastAPI) -> FastAPI:
+    # Gradio é uma subaplicação: request.app não é a aplicação dona do lifespan.
+    def identity(request: Request):
+        return app.state.auth_service.authenticate(request.cookies.get(COOKIE_NAME))
+
+    def require_identity(request: Request):
+        user = identity(request)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Entre na sua conta para continuar.")
+        return user
+
+    def gradio_identity(request: Request):
+        user = identity(request)
+        return str(user.user_id) if user else None
+
     return gr.mount_gradio_app(
         app,
-        build_chat_ui(lambda: app.state.chat_service),
+        build_chat_ui(lambda: app.state.chat_service, authenticate=require_identity),
         path="/ui",
         footer_links=[],
         show_error=False,
         ssr_mode=False,
         enable_monitoring=False,
+        auth_dependency=gradio_identity,
     )

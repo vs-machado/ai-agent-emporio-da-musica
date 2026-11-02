@@ -38,7 +38,7 @@ não há operação de exclusão ou encaminhamento automático.
 `calculate_refund` consulta o total registrado para uma devolução integral ou
 calcula uma estimativa proporcional quando o pedido inteiro contém apenas um
 produto. Não usa preços atuais nem interpreta essa convenção como regra do manual.
-O cliente deve informar número/e-mail do pedido e esclarecer se quer devolver
+O cliente deve informar o número do pedido e esclarecer se quer devolver
 tudo ou quais produtos e quantidades. Pedidos cancelados exigem verificação de
 eventual pagamento; devoluções parciais com produtos diferentes não recebem rateio.
 Todos esses resultados exigem confirmação da equipe, sem aprovar ou executar reembolso.
