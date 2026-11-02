@@ -99,7 +99,10 @@ def build_tools(
         (
             "search_products",
             "Busca instrumentos por nome, categoria, marca no nome e faixa de preço atual. "
-            "Retorna preço, promoção, status e estoque consultados. Para encontrar itens "
+            "Busca também especificações, ignora conectivos e aceita singular/plural. "
+            "Retorna especificações, preço, promoção, status e estoque consultados. "
+            "Uma lista vazia não confirma falta de estoque: revise os filtros e amplie a busca. "
+            "Para encontrar itens "
             "indisponíveis use available_only=false. A loja não comercializa acessórios.",
             ProductSearch,
             catalog.search_products,
