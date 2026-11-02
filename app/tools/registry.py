@@ -172,11 +172,11 @@ def build_tools(
         (
             "calculate_shipping",
             "Consulta carrinho e destino, sem taxas, limites, modalidades ou prazos fixos. "
-            "Se houver destination_postal_code, valida o destino no ViaCEP; Campo Grande/MS é "
-            "local e outro estado é externo. Outras cidades de MS exigem confirmar a região. "
-            "Sem CEP, use a região confirmada pelo cliente. Na região local, consulte "
-            "search_policy para as condições vigentes. Fora dela, informe que verificará o valor "
-            "com um funcionário e avisará depois. Não exige peso/dimensões nem agenda retorno.",
+            "Recebe o destino por cidade/UF ou por CEP já informado, sem exigir CEP adicional. "
+            "A classificação de cobertura é interna, nunca solicitada ao cliente. "
+            "Para cobertura local confirmada, consulte search_policy para as condições vigentes. "
+            "Para destino externo ou cobertura incerta, informe que verificará o valor com "
+            "um funcionário e avisará depois. Não exige peso/dimensões nem agenda retorno.",
             ShippingQuote,
             commerce.calculate_shipping,
         ),
