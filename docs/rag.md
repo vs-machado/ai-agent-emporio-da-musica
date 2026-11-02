@@ -126,6 +126,11 @@ Para uso separado da API, veja a construção em [Tools](tools.md).
 
 ## Avaliação
 
+Para avaliar a **RAG Triad**, correção da resposta e uso de tools com Ragas,
+incluindo casos derivados do histórico do banco e relatórios persistidos com a
+configuração de cada execução, veja [Benchmarks do agente](benchmarks.md).
+O comando abaixo continua sendo o diagnóstico restrito de recuperação.
+
 `--evaluate` executa dez perguntas em `app/rag/evaluation.py`, com seções esperadas
 para horários, PIX/promoções, parcelamento, devoluções, trocas, frete, garantia,
 privacidade e reclamações. O relatório JSON inclui:
