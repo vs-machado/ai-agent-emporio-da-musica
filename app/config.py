@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     rag_context_tokens: int = Field(default=2000, ge=512, le=16000)
     rag_chunk_tokens: int = Field(default=1000, ge=256, le=8000)
 
+    @field_validator("rag_embedding_dimensions", mode="before")
+    @classmethod
+    def normalize_embedding_dimensions(cls, value):
+        # Variáveis de ambiente são strings; o schema continua fixado em 768.
+        return 768 if value == "768" else value
+
     @field_validator("google_api_key", "openrouter_api_key", mode="before")
     @classmethod
     def normalize_optional_key(cls, value):
