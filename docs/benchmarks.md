@@ -6,8 +6,11 @@ dependências do projeto; a integração usa a API `ragas.metrics.collections`.
 
 ## Dataset baseado no banco
 
-`app/benchmarks/cases.json` contém 31 casos: 29 derivados dos 56 turnos revisados
-do banco em 02/11/2026 e dois cenários novos solicitados pelo usuário. Cada caso registra origem, pergunta,
+`app/benchmarks/cases.json` contém 31 casos: 28 derivados dos 56 turnos revisados
+do banco em 02/11/2026 e três cenários novos solicitados pelo usuário. O caso de
+violão de sete cordas substitui o de eletroacústico exemplificado nas instruções;
+seu gabarito consulta somente modelos de sete cordas. Esse exemplo não é incluído
+no prompt nem nas descrições das ferramentas. Cada caso registra origem, pergunta,
 contexto necessário ao replay, tools esperadas, chamadas de referência e critérios
 de correção. A versão `2026-11-02.4` revisa a ampliação dos dez casos iniciais:
 reformula endereço/horário e catálogo de hoje, remove uma pergunta redundante e
@@ -110,7 +113,7 @@ Com `.env`, banco acessível e migrations aplicadas:
 # Diagnóstico histórico local: tools e checks, sem chamadas ao avaliador
 uv run python -m app.benchmarks --mode historical --no-judge
 
-# Avaliar os 29 casos com origem histórica; os dois novos ficam marcados como skipped
+# Avaliar os 28 casos com origem histórica; os três novos ficam marcados como skipped
 uv run python -m app.benchmarks --mode historical
 
 # Conversas novas com o agente, tools e índice atuais
