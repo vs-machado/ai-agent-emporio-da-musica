@@ -109,10 +109,16 @@ def build_models(settings: Settings) -> AgentModels | None:
         settings: Chaves, identificadores dos modelos e limites por chamada.
 
     Returns:
-        Modelos com retries e cache LangChain desabilitados, ou None sem chave primária.
+        Modelos com retries e cache LangChain desabilitados, ou None sem chave do
+        provedor primário. Modelos openrouter/ usam a chave OpenRouter.
         A construção não valida disponibilidade remota nem exporta chaves ao ambiente.
     """
-    if settings.google_api_key is None:
+    primary_key = (
+        settings.openrouter_api_key
+        if settings.chat_primary_model.startswith("openrouter/")
+        else settings.google_api_key
+    )
+    if primary_key is None:
         return None
     common = {
         "request_timeout": settings.chat_model_timeout,
@@ -125,11 +131,14 @@ def build_models(settings: Settings) -> AgentModels | None:
     }
     primary = ToolCallingLiteLLM(
         model=settings.chat_primary_model,
-        api_key=settings.google_api_key.get_secret_value(),
+        api_key=primary_key.get_secret_value(),
         **common,
     )
     fallback = None
-    if settings.openrouter_api_key is not None:
+    if (
+        settings.openrouter_api_key is not None
+        and settings.chat_fallback_model != settings.chat_primary_model
+    ):
         fallback = ToolCallingLiteLLM(
             model=settings.chat_fallback_model,
             api_key=settings.openrouter_api_key.get_secret_value(),

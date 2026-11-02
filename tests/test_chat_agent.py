@@ -59,6 +59,8 @@ def settings():
         postgres_password="test",
         google_api_key=None,
         openrouter_api_key=None,
+        chat_primary_model="gemini/gemini-2.5-flash-lite",
+        chat_fallback_model="openrouter/deepseek/deepseek-v4.1-flash",
     )
 
 
@@ -483,6 +485,31 @@ def test_model_configuration_is_lazy_and_fallback_optional(settings, monkeypatch
     assert models.fallback is None
     configured = configured.model_copy(update={"openrouter_api_key": settings.postgres_password})
     assert build_models(configured).fallback is not None
+
+
+def test_openrouter_primary_uses_its_key_without_duplicate_fallback(settings):
+    configured = settings.model_copy(
+        update={
+            "google_api_key": None,
+            "openrouter_api_key": settings.postgres_password,
+            "chat_primary_model": settings.chat_fallback_model,
+        }
+    )
+    models = build_models(configured)
+    assert models.primary.model == configured.chat_primary_model
+    assert models.primary.api_key == configured.openrouter_api_key.get_secret_value()
+    assert models.fallback is None
+
+
+def test_openrouter_primary_requires_openrouter_key(settings):
+    configured = settings.model_copy(
+        update={
+            "google_api_key": settings.postgres_password,
+            "openrouter_api_key": None,
+            "chat_primary_model": settings.chat_fallback_model,
+        }
+    )
+    assert build_models(configured) is None
 
 
 def test_litellm_adapter_executes_tool_call_cycle_without_real_provider(monkeypatch):
