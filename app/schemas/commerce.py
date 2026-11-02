@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
-from app.schemas.base import Identifier, Input
+from app.schemas.base import Identifier, Input, PostalCode
 
 
 class CartItem(Input):
@@ -43,6 +43,9 @@ class PaymentQuote(Cart):
 
 
 class ShippingQuote(Cart):
+    destination_postal_code: PostalCode | None = Field(
+        default=None, description="CEP do destino informado pelo cliente, consultado no ViaCEP"
+    )
     destination_region: Literal["campo_grande_metropolitan", "other", "unknown"] = Field(
         default="unknown",
         description="Região confirmada pelo cliente; use unknown se não houver confirmação",
