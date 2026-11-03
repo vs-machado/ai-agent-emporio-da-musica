@@ -78,6 +78,10 @@ def snapshot(engine, settings):
                 "app/services/catalog.py",
                 "app/benchmarks/metrics.py",
                 "app/benchmarks/runner.py",
+                "app/benchmarks/dataset.py",
+                "app/tools/registry.py",
+                "app/services/orders.py",
+                "app/schemas/orders.py",
             )
         },
         "rag": {
@@ -169,12 +173,16 @@ class RunLog:
                 "errors": sum(e["status"] == "error" for e in entries),
                 "skipped": sum(e["status"] == "skipped" for e in entries),
             }
+            if any(entry.get("diagnostic") for entry in entries):
+                summary[name]["diagnostic"] = True
         report = {
             "run_id": self.run_id,
             "status": status,
             "finished_at": datetime.now(UTC).isoformat(),
             "case_count": len(results),
             "summary": summary,
+            "tool_coverage": self.manifest.get("tool_coverage"),
+            "tool_evaluation_version": self.manifest.get("tool_evaluation_version"),
             "results": results,
         }
         self.write("report.json", report)

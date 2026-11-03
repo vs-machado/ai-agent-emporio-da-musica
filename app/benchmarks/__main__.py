@@ -34,8 +34,13 @@ def main():
         parser.error("Timeout e limite de tokens devem ser positivos")
     if not args.no_judge and settings.google_api_key is None:
         parser.error("GOOGLE_API_KEY necessária para o avaliador")
-    if args.mode == "live" and settings.google_api_key is None:
-        parser.error("GOOGLE_API_KEY necessária para executar o agente")
+    primary_key = (
+        settings.openrouter_api_key
+        if settings.chat_primary_model.startswith("openrouter/")
+        else settings.google_api_key
+    )
+    if args.mode == "live" and primary_key is None:
+        parser.error("Configure a chave do provedor de CHAT_PRIMARY_MODEL para executar o agente")
     client = None
     if args.no_judge:
         scorer = RagasScorer(timeout=args.metric_timeout)
