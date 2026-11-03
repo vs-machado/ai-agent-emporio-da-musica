@@ -13,6 +13,7 @@ class User(Base):
 
     user_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(254), unique=True)
+    name: Mapped[str | None] = mapped_column(String(200))
     password_hash: Mapped[str] = mapped_column(Text)
     customer_id: Mapped[int | None] = mapped_column(
         ForeignKey("customers.customer_id"), unique=True

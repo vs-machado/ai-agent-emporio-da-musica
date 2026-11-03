@@ -24,6 +24,7 @@ class Principal:
     user_id: UUID
     customer_id: int | None
     email: str
+    name: str | None = None
 
 
 current_principal: ContextVar[Principal | None] = ContextVar("current_principal", default=None)
@@ -39,14 +40,17 @@ class AuthService:
             else token_urlsafe(48)
         )
 
-    def register(self, email: str, password: str) -> Principal:
+    def register(self, email: str, password: str, name: str) -> Principal:
+        name = name.strip()
+        if not 1 <= len(name) <= 200:
+            raise ValueError("O nome deve ter de 1 a 200 caracteres.")
         # Nunca associa cadastro público a clientes importados por e-mail digitado.
-        user = User(email=email.casefold(), password_hash=passwords.hash(password))
+        user = User(email=email.casefold(), name=name, password_hash=passwords.hash(password))
         try:
             with self.sessions.begin() as session:
                 session.add(user)
                 session.flush()
-                return Principal(user.user_id, None, user.email)
+                return Principal(user.user_id, None, user.email, user.name)
         except IntegrityError as exc:
             raise ValueError("Não foi possível criar a conta com esse e-mail.") from exc
 
@@ -89,7 +93,7 @@ class AuthService:
             user = session.get(User, user_id)
             if user is None or user.token_version != claims["ver"]:
                 return None
-            return Principal(user.user_id, user.customer_id, user.email)
+            return Principal(user.user_id, user.customer_id, user.email, user.name)
 
     def logout(self, principal: Principal) -> None:
         with self.sessions.begin() as session:

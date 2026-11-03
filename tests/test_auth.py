@@ -10,13 +10,14 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from gradio.state_holder import SessionState
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings
 from app.ingestion.loader import ingest
 from app.models import Customer, Order, User
-from app.routes.auth import Credentials, SameOriginMiddleware
+from app.routes.auth import Credentials, Registration, SameOriginMiddleware
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.ui_access import UIAccessMiddleware
@@ -60,6 +61,22 @@ def test_credentials_preserve_password_whitespace():
     assert credentials.password == " senha-de-teste "
 
 
+@pytest.mark.parametrize("name", [None, "", "   ", "a" * 201])
+def test_registration_rejects_missing_blank_or_oversized_name(name):
+    payload = {"email": "a@example.test", "password": PASSWORD}
+    if name is not None:
+        payload["name"] = name
+    with pytest.raises(ValidationError):
+        Registration(**payload)
+
+
+def test_registration_trims_name_without_changing_password():
+    payload = Registration(name="  Ana Maria  ", email=" A@EXAMPLE.TEST ", password=" senha-teste ")
+    assert payload.name == "Ana Maria"
+    assert payload.email == "a@example.test"
+    assert payload.password == " senha-teste "
+
+
 def test_register_login_logout_cookie_and_no_automatic_customer_link(auth_app):
     app, client, sessions = auth_app
     with sessions() as session:
@@ -68,8 +85,16 @@ def test_register_login_logout_cookie_and_no_automatic_customer_link(auth_app):
     assert client.post("/chat", json={"message": "Olá"}).status_code == 401
     assert client.get("/ui/", follow_redirects=False).headers["location"] == "/auth"
     assert client.get("/ui/config").status_code == 401
-    assert client.post("/auth/register", json=credentials).status_code == 201
-    assert client.post("/auth/register", json=credentials).status_code == 409
+    registration = {**credentials, "name": "  Ana Maria  "}
+    created = client.post("/auth/register", json=registration)
+    assert created.status_code == 201
+    assert "HttpOnly" in created.headers["set-cookie"]
+    assert "SameSite=lax" in created.headers["set-cookie"]
+    assert created.headers["cache-control"] == "no-store"
+    assert client.get("/auth/me").json()["name"] == "Ana Maria"
+    assert client.get("/ui/").status_code == 200
+    assert client.get("/auth", follow_redirects=False).headers["location"] == "/ui/"
+    assert client.post("/auth/register", json=registration).status_code == 409
     assert (
         client.post("/auth/login", json={**credentials, "password": "senha-incorreta"}).status_code
         == 401
@@ -80,6 +105,7 @@ def test_register_login_logout_cookie_and_no_automatic_customer_link(auth_app):
     assert client.get("/auth/me").json()["customer_id"] is None
     with sessions() as session:
         user = session.scalar(select(User).where(User.email == existing_email.casefold()))
+        assert user.name == "Ana Maria"
         assert user.password_hash != PASSWORD
         assert passwords.verify(PASSWORD, user.password_hash)
     token = client.cookies.get(COOKIE_NAME)
@@ -92,7 +118,7 @@ def test_register_login_logout_cookie_and_no_automatic_customer_link(auth_app):
 def test_expired_tampered_and_unknown_user_tokens_are_rejected(auth_app):
     app, client, _ = auth_app
     service = app.state.auth_service
-    service.register("a@example.test", PASSWORD)
+    service.register("a@example.test", PASSWORD, "Ana")
     token = service.login("a@example.test", PASSWORD)
     claims = jwt.decode(token, service.secret, algorithms=["HS256"], audience="emporio-atendimento")
     for changes in (
@@ -110,7 +136,7 @@ def test_expired_tampered_and_unknown_user_tokens_are_rejected(auth_app):
 
 def test_csrf_rejects_cross_origin_and_missing_origin(auth_app):
     _, client, _ = auth_app
-    payload = {"email": "a@example.test", "password": PASSWORD}
+    payload = {"name": "Ana", "email": "a@example.test", "password": PASSWORD}
     for origin in ("https://evil.example", "null", "", "http://[invalid"):
         assert (
             client.post("/auth/register", json=payload, headers={"Origin": origin}).status_code
@@ -247,6 +273,7 @@ def test_seed_is_idempotent_and_preserves_existing_orders(auth_app):
         assert list(session.scalars(select(Order.order_id).order_by(Order.order_id))) == before
         user = session.scalar(select(User).where(User.email == accounts[0]["email"]))
         assert passwords.verify(PASSWORD, user.password_hash)
+        assert user.name == session.get(Customer, user.customer_id).name.strip()[:200]
         assert {user.email: user.customer_id for user in session.scalars(select(User))} == expected
     assert {account["email"]: account["customer_id"] for account in accounts} == expected
     assert any(account["orders"] for account in accounts)
@@ -289,7 +316,7 @@ def test_seed_rejects_existing_public_account_and_rolls_back(auth_app):
     app, _, sessions = auth_app
     with sessions() as session:
         email = session.scalar(select(Customer.email).where(Customer.customer_id == 2))
-    account = app.state.auth_service.register(email, PASSWORD)
+    account = app.state.auth_service.register(email, PASSWORD, "Conta pública")
     with pytest.raises(ValueError, match="outro vínculo"):
         seed_users(sessions, PASSWORD)
     with sessions() as session:

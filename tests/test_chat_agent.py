@@ -1085,16 +1085,18 @@ def test_agent_queries_own_orders_without_number_and_receives_trusted_identity(
 def test_authenticated_identity_is_preserved_on_model_fallback(settings):
     primary = ScriptedModel(responses=[timeout()])
     fallback = ScriptedModel(responses=[AIMessage(content="Olá! Como posso ajudar?")])
-    principal = Principal(uuid4(), None, "conta@example.test")
+    principal = Principal(uuid4(), None, "conta@example.test", "Ana Maria")
     service = make_service(settings, primary, fallback=fallback)
     service.chat(ChatRequest(message="Olá"), user=principal)
     assert primary._inputs[0][0].text == fallback._inputs[0][0].text
     assert '"email": "conta@example.test"' in fallback._inputs[0][0].text
+    assert '"name": "Ana Maria"' in fallback._inputs[0][0].text
     # O contexto é reconstruído em cada turno, sem vazar a conta anterior.
     fallback.responses.append(AIMessage(content="Olá novamente!"))
     primary.responses.append(AIMessage(content="Olá novamente!"))
     service.chat(ChatRequest(message="Olá"))
     assert "conta@example.test" not in primary._inputs[-1][0].text
+    assert "Ana Maria" not in primary._inputs[-1][0].text
 
 
 def test_refund_uses_order_discovered_by_tool_without_asking_customer_number(engine, settings):

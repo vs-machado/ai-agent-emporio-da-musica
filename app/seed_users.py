@@ -38,12 +38,17 @@ def seed_users(sessions, password: str) -> list[dict]:
                     )
             if user is None:
                 user = User(
-                    email=email, customer_id=customer_id, password_hash=passwords.hash(password)
+                    email=email,
+                    name=customer.name.strip()[:200],
+                    customer_id=customer_id,
+                    password_hash=passwords.hash(password),
                 )
                 session.add(user)
                 session.flush()
             elif user.customer_id != customer_id:
                 raise ValueError(f"A conta {email} já existe com outro vínculo.")
+            if not user.name:
+                user.name = customer.name.strip()[:200]
             orders = list(
                 session.scalars(
                     select(Order.order_id)
