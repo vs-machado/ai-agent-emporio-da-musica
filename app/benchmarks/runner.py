@@ -12,12 +12,64 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.agents.factory import build_chat_service
 from app.benchmarks.reporting import RunLog, redact, snapshot
-from app.models import ConversationTurn
+from app.models import ConversationTurn, User
 from app.rag.retrieval import LlamaIndexPolicyRetriever
 from app.schemas.catalog import ProductSearch, PromotionSearch
 from app.schemas.chat import ChatRequest
+from app.services.auth import Principal
 from app.services.catalog import CatalogService
 from app.tools import build_tools
+
+
+def benchmark_tools(engine, sessions, retriever):
+    """Usa as tools reais; a escrita de reclamação é revertida ao capturar o resultado."""
+    tools = build_tools(sessions, retriever)
+
+    def register_complaint(**kwargs):
+        with engine.connect() as connection:
+            transaction = connection.begin()
+            try:
+                isolated = sessionmaker(bind=connection, join_transaction_mode="create_savepoint")
+                tool = next(
+                    t for t in build_tools(isolated, retriever) if t.name == "register_complaint"
+                )
+                return tool.func(**kwargs)
+            finally:
+                transaction.rollback()
+
+    return [
+        tool.model_copy(update={"func": register_complaint})
+        if tool.name == "register_complaint"
+        else tool
+        for tool in tools
+    ]
+
+
+def model_tool_definitions(tools):
+    """Schemas públicos, sem exigir argumentos privados injetados pelo middleware."""
+    definitions = [convert_to_openai_tool(tool) for tool in tools]
+    for definition in definitions:
+        if definition["function"]["name"] == "register_complaint":
+            schema = definition["function"]["parameters"]
+            schema["properties"].pop("request_id", None)
+            schema["required"] = [
+                name for name in schema.get("required", []) if name != "request_id"
+            ]
+    return definitions
+
+
+class BenchmarkFixtureError(ValueError):
+    """O caso autenticado precisa de uma conta provisionada para o cliente indicado."""
+
+
+def case_principal(sessions, case):
+    if case.auth_customer_id is None:
+        return None
+    with sessions() as session:
+        user = session.scalar(select(User).where(User.customer_id == case.auth_customer_id))
+        if user is None:
+            raise BenchmarkFixtureError("authenticated_fixture_missing")
+        return Principal(user.user_id, user.customer_id, user.email)
 
 
 class RecordingRetriever:
@@ -169,10 +221,15 @@ async def run_benchmark(
     config = snapshot(engine, settings)
     sessions = sessionmaker(engine)
     recorder = RecordingRetriever(LlamaIndexPolicyRetriever(engine, settings))
-    tools = build_tools(sessions, recorder)
+    tools = benchmark_tools(engine, sessions, recorder)
     selected = [c for c in dataset.cases if cases is None or c.id in cases]
     if not selected:
         raise ValueError("Nenhum caso selecionado")
+    available = {tool.name for tool in tools}
+    dataset.tool_coverage(available)
+    coverage = dataset.tool_coverage(available, selected)
+    definitions = model_tool_definitions(tools)
+    schemas = {d["function"]["name"]: d["function"]["parameters"] for d in definitions}
     manifest = {
         "mode": mode,
         "configuration": config,
@@ -181,10 +238,15 @@ async def run_benchmark(
         "dataset": dataset.model_dump(),
         "dataset_sha256": hashlib.sha256(dataset.model_dump_json().encode()).hexdigest(),
         "selected_cases": [c.id for c in selected],
-        "tools": [convert_to_openai_tool(t) for t in tools],
+        "tools": definitions,
+        "tool_coverage": coverage,
+        "tool_evaluation_version": "admissible-plans-v1",
+        "complaint_writes": "rollback_per_call; cross_call_idempotency_not_scored",
         "historical_tools": "Todas as chamadas e resultados registrados no histórico",
         "notes": [
-            "ToolCallF1 exige igualdade exata de nomes/argumentos; recall compara nomes.",
+            "Planos admissíveis avaliam tools obrigatórias, complementares e ordem quando exigida.",
+            "ToolCallAccuracy e ToolCallF1 são diagnósticos de referência, não gates.",
+            "Contratos JSON e resultados de execução são métricas separadas da seleção de tools.",
             "ToolCallAccuracy 0.4.3 compara argumentos de referência mas ignora chaves extras.",
             "Faithfulness usa apenas evidências expostas ao agente, inclusive histórico.",
             "Ausência de contexto é registrada como skipped, não como sucesso.",
@@ -203,11 +265,15 @@ async def run_benchmark(
             started = perf_counter()
             recorder.calls.clear()
             log.event("case_started", case_id=case.id)
-            if mode == "historical" and case.source_turn_id is None:
+            if mode == "historical" and (
+                case.source_turn_id is None or case.auth_customer_id is not None
+            ):
                 result = {
                     "case_id": case.id,
                     "status": "skipped",
-                    "reason": "no_historical_source",
+                    "reason": "requires_live_authenticated_context"
+                    if case.auth_customer_id is not None
+                    else "no_historical_source",
                     "question": case.question,
                 }
                 results.append(result)
@@ -224,7 +290,9 @@ async def run_benchmark(
                         else AIMessage(content=m.content)
                         for m in case.history
                     ]
-                    turn = service.chat(ChatRequest(message=case.question), history)
+                    principal = case_principal(sessions, case)
+                    kwargs = {"user": principal} if principal is not None else {}
+                    turn = service.chat(ChatRequest(message=case.question), history, **kwargs)
                     messages, response = turn.messages, turn.response.model_dump(mode="json")
                 actual = evidence([*history, *messages])
                 current = evidence(messages)
@@ -248,7 +316,9 @@ async def run_benchmark(
                     contexts=contexts,
                     retrieval=recorder.calls,
                 )
-                metrics = await scorer.score(case, messages, text, contexts, question)
+                metrics = await scorer.score(
+                    case, messages, text, contexts, question, tool_schemas=schemas
+                )
                 oracle = catalog_oracle(catalog, case) if case.catalog else None
                 result = {
                     "case_id": case.id,
@@ -259,6 +329,12 @@ async def run_benchmark(
                     "response": text,
                     "model": response.get("model"),
                     "used_fallback": response.get("used_fallback"),
+                    "authenticated_customer_id": case.auth_customer_id,
+                    "tool_expectations": {
+                        "plans": [plan.model_dump() for plan in case.accepted_tool_plans],
+                        "optional_tools": case.optional_tools,
+                        "forbidden_tools": case.forbidden_tools,
+                    },
                     "model_calls": [
                         {
                             "model": m.response_metadata.get("model_name"),
@@ -290,6 +366,8 @@ async def run_benchmark(
             except Exception as exc:
                 status = "partial"
                 result = {"case_id": case.id, "status": "error", "error_type": type(exc).__name__}
+                if isinstance(exc, BenchmarkFixtureError):
+                    result["reason"] = "authenticated_fixture_missing"
             results.append(result)
             log.event("case_finished", **result)
             log.write("partial.json", {"results": results})

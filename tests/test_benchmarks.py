@@ -3,19 +3,23 @@
 import asyncio
 import json
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage, messages_to_dict
+from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
-from app.benchmarks.dataset import load_dataset
-from app.benchmarks.metrics import RagasScorer
+from app.benchmarks.dataset import BenchmarkCase, load_dataset
+from app.benchmarks.metrics import RagasScorer, tool_contract_metrics
 from app.benchmarks.reporting import RunLog, redact
 from app.benchmarks.runner import (
     RecordingRetriever,
+    benchmark_tools,
     checks,
     evidence,
     historical_turn,
+    model_tool_definitions,
     run_benchmark,
 )
 from app.tools import build_tools
@@ -27,7 +31,7 @@ def case(name):
 
 def test_dataset_has_reviewed_questions_covering_six_reports():
     dataset = load_dataset()
-    assert len(dataset.cases) == 31
+    assert len(dataset.cases) == 38
     assert {15, 38, 39, 40, 41, 42, 44, 45, 46, 56} <= {c.source_turn_id for c in dataset.cases}
     assert case("bateria_contextual").history[0].content == "tem bateria?"
     assert "7 dias corridos após o recebimento" in case("arrependimento").reference
@@ -157,11 +161,11 @@ def test_missing_tool_is_zero_and_missing_context_is_not_faithfulness_success():
     }
 
 
-def test_correct_clarification_needs_no_tools_and_f1_is_not_misreported_as_zero():
-    selected = case("rastreamento_sem_identificadores")
+def test_correct_greeting_needs_no_tools_and_f1_is_not_misreported_as_zero():
+    selected = case("saudacao_sem_tools")
     messages = [
         HumanMessage(content=selected.question),
-        AIMessage(content="Qual o número do pedido e o e-mail cadastrado?"),
+        AIMessage(content="Olá! Sou a HarmonIA. Como posso ajudar?"),
     ]
     result = asyncio.run(
         RagasScorer().score(selected, messages, messages[-1].text, [], selected.question)
@@ -328,7 +332,6 @@ def test_historical_runner_captures_partial_results_without_mutating_chats(tmp_p
 
     monkeypatch.setattr(runner, "snapshot", lambda *args: {"rag": {"active_index": None}})
     monkeypatch.setattr(runner, "LlamaIndexPolicyRetriever", lambda *args: None)
-    monkeypatch.setattr(runner, "build_tools", lambda *args: [])
     monkeypatch.setattr(
         runner,
         "historical_turn",
@@ -361,13 +364,12 @@ def test_live_oracle_is_not_injected_into_grounding_context(tmp_path, monkeypatc
     observed = []
 
     class Scorer:
-        async def score(self, case, messages, text, contexts, question):
+        async def score(self, case, messages, text, contexts, question, **kwargs):
             observed.extend(contexts)
             return {}
 
     monkeypatch.setattr(runner, "snapshot", lambda *args: {"rag": {"active_index": None}})
     monkeypatch.setattr(runner, "LlamaIndexPolicyRetriever", lambda *args: None)
-    monkeypatch.setattr(runner, "build_tools", lambda *args: [])
     service = SimpleNamespace(
         chat=lambda *args: SimpleNamespace(
             messages=[HumanMessage(content="Tem bateria?"), AIMessage(content="Não temos")],
@@ -404,7 +406,6 @@ def test_interrupted_run_preserves_finished_cases_and_final_report(tmp_path, mon
 
     monkeypatch.setattr(runner, "snapshot", lambda *args: {"rag": {"active_index": None}})
     monkeypatch.setattr(runner, "LlamaIndexPolicyRetriever", lambda *args: None)
-    monkeypatch.setattr(runner, "build_tools", lambda *args: [])
 
     def interrupted(*args):
         raise KeyboardInterrupt
@@ -449,3 +450,169 @@ def test_retrieval_failure_is_logged_without_sdk_error_details():
 def test_historical_source_mismatch_is_rejected(engine):
     with pytest.raises(ValueError, match="Turno de origem"):
         historical_turn(engine, case("garantia"))
+
+
+def tool_transcript(calls, *, failed=None):
+    """Fixtures locais, sem executar ferramentas ou modelos."""
+    messages = [HumanMessage(content="Consulta de teste")]
+    for index, (name, args) in enumerate(calls):
+        call_id = f"call-{index}"
+        messages.extend(
+            [
+                AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}]),
+                ToolMessage(
+                    name=name,
+                    tool_call_id=call_id,
+                    content=json.dumps({"status": "unavailable" if name == failed else "ok"}),
+                ),
+            ]
+        )
+    return messages
+
+
+def test_dataset_requires_each_of_the_eleven_tools_in_at_least_one_plan():
+    available = {tool.name for tool in build_tools(sessionmaker())}
+    coverage = load_dataset().tool_coverage(available)
+    assert len(coverage["available"]) == 11
+    assert coverage["not_required_by_any_case"] == []
+    assert case("rastreamento_sem_identificadores").auth_customer_id == 3
+    assert case("rastreamento_sem_identificadores").expected_tools == ["get_order_status"]
+
+
+def test_complementary_and_repeated_calls_are_not_false_failures():
+    messages = tool_transcript(
+        [
+            ("search_products", {"query": "bateria"}),
+            ("search_products", {"category": "Baterias"}),
+            ("get_product_details", {"product_id": 81}),
+        ]
+    )
+    result = tool_contract_metrics(case("bateria"), messages)
+    assert result["required_tool_recall"]["value"] == 1
+    assert result["allowed_tool_precision"]["value"] == 1
+    assert result["tool_plan_success"]["value"] == 1
+
+
+def test_alternative_valid_plan_is_not_compared_only_to_first_tool():
+    result = tool_contract_metrics(case("promocoes"), tool_transcript([("search_products", {})]))
+    assert result["tool_plan_success"]["value"] == 1
+    assert result["tool_plan_success"]["details"]["plan"] == "catalogo_com_promocoes"
+
+
+def test_missing_second_required_tool_and_unexpected_call_are_detected():
+    result = tool_contract_metrics(
+        case("frete_carrinho_especifico"),
+        tool_transcript(
+            [
+                ("calculate_shipping", {}),
+                ("register_complaint", {}),
+            ]
+        ),
+    )
+    assert result["required_tool_recall"]["value"] == 0.5
+    assert result["allowed_tool_precision"]["value"] == 0.5
+    assert result["tool_plan_success"]["value"] == 0
+    assert result["tool_plan_success"]["details"]["missing"] == ["search_policy"]
+    assert result["tool_plan_success"]["details"]["unexpected"] == ["register_complaint"]
+
+
+def test_order_is_checked_only_for_plans_that_require_it():
+    result = tool_contract_metrics(
+        case("frete_cep_campo_grande"),
+        tool_transcript(
+            [
+                ("search_policy", {"query": "frete"}),
+                ("lookup_postal_code", {"postal_code": "79002-000"}),
+            ]
+        ),
+    )
+    assert result["required_tool_recall"]["value"] == 1
+    assert result["tool_plan_success"]["value"] == 0
+    assert not result["tool_plan_success"]["details"]["order_satisfied"]
+
+
+def test_schema_validation_uses_all_public_tools_and_not_private_injected_arguments():
+    definitions = model_tool_definitions(build_tools(sessionmaker()))
+    schemas = {d["function"]["name"]: d["function"]["parameters"] for d in definitions}
+    assert len(schemas) == 11
+    assert "request_id" not in schemas["register_complaint"]["properties"]
+    result = tool_contract_metrics(
+        case("simulacao_pix"),
+        tool_transcript(
+            [
+                ("calculate_payment", {"items": [{"product_id": 81}], "payment_method": "pix"}),
+                ("get_product_details", {"product_id": "invalid"}),
+            ]
+        ),
+        schemas,
+    )
+    assert result["tool_schema_validity"]["value"] == 0.5
+    assert result["tool_schema_validity"]["details"]["failures"][0]["tool"] == "get_product_details"
+
+
+def test_valid_tool_selection_does_not_hide_execution_error():
+    result = tool_contract_metrics(
+        case("bateria"), tool_transcript([("search_products", {})], failed="search_products")
+    )
+    assert result["tool_plan_success"]["value"] == 1
+    assert result["tool_execution_success"]["value"] == 0
+
+
+def test_missing_result_is_not_a_successful_tool_execution():
+    messages = tool_transcript([("search_products", {})])[:-1]
+    result = tool_contract_metrics(case("bateria"), messages)
+    assert result["tool_execution_success"]["value"] == 0
+
+
+def test_reused_call_id_in_a_later_round_is_paired_with_its_own_result():
+    first = tool_transcript([("search_products", {"query": "bateria"})])
+    second = tool_transcript([("get_product_details", {"product_id": 81})])[1:]
+    result = tool_contract_metrics(case("bateria"), [*first, *second])
+    assert result["tool_execution_success"]["value"] == 1
+
+
+def test_unmatched_tool_result_is_not_accepted_as_valid_execution():
+    messages = tool_transcript([("search_products", {})])
+    messages.append(
+        ToolMessage(name="search_products", tool_call_id="orphan", content='{"status":"ok"}')
+    )
+    result = tool_contract_metrics(case("bateria"), messages)
+    assert result["tool_execution_success"]["value"] == 0.5
+
+
+def test_unknown_tool_name_in_dataset_is_rejected_before_benchmark_execution():
+    dataset = load_dataset()
+    invalid = case("bateria").model_copy(update={"expected_tools": ["invented_tool"]})
+    with pytest.raises(ValueError, match="Tools desconhecidas"):
+        dataset.tool_coverage({tool.name for tool in build_tools(sessionmaker())}, [invalid])
+
+
+def test_contradictory_tool_contract_is_rejected():
+    with pytest.raises(ValueError, match="permitida e proibida"):
+        BenchmarkCase(
+            id="invalid",
+            question="Oi",
+            expected_tools=["search_policy"],
+            reference_calls=[],
+            forbidden_tools=["search_policy"],
+        )
+
+
+def test_benchmark_complaint_executes_real_service_but_rolls_back_write(engine):
+    from app.models import Complaint
+
+    sessions = sessionmaker(engine)
+    tool = next(
+        t for t in benchmark_tools(engine, sessions, None) if t.name == "register_complaint"
+    )
+    response = tool.invoke(
+        {
+            "request_id": str(uuid4()),
+            "contact_email": "benchmark@example.test",
+            "message": "Registro de teste que não deve permanecer no banco.",
+        }
+    )
+    assert response["status"] == "registered"
+    assert response["complaint_id"]
+    with sessions() as session:
+        assert session.scalar(select(func.count()).select_from(Complaint)) == 0
