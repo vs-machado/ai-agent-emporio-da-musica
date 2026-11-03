@@ -82,9 +82,10 @@ O fallback de chat não substitui o serviço de embeddings. Quando o Gemini Embe
 - `calculate_shipping`: consulta o carrinho e destino, sem tarifas, limites, modalidades ou prazos fixos. Condições locais vêm do manual via `search_policy`; fora da região metropolitana, orienta verificar o valor com um funcionário e informar ao cliente depois.
 - `calculate_refund`: consulta o total registrado para devolução integral ou calcula estimativa proporcional para devolução parcial de um pedido composto apenas pelo mesmo produto. Exige pedido do cliente autenticado e confirmação da equipe; não aprova nem executa reembolso.
 - `get_current_datetime`: fornece data/hora atual e dia da semana no fuso IANA `America/Campo_Grande`, com offset UTC calculado e indicador de horário de verão. Não recebe fuso ou data do modelo e não consulta banco nem provedor externo.
+- `check_holiday`: consulta offline feriados nacionais e de MS com `holidays`, categoria `PUBLIC`, entre 1996 e 2100. Não inclui municípios, pontos facultativos ou horários especiais da loja.
 - `lookup_postal_code`: consulta gratuitamente o ViaCEP para validar o CEP e obter município/UF. O cálculo de frete aceita esse CEP, sem inferir cobertura de outras cidades da região metropolitana.
 
-O fuso da loja é `America/Campo_Grande`, atualmente UTC−4, usando `zoneinfo` e `tzdata`. O relógio fornece o instante convertido; `search_policy` fornece o expediente. Sem calendário de feriados ou horários especiais, o agente não garante abertura nem data exata de retorno. Contratos completos estão em [Tools](tools.md).
+O fuso é `America/Campo_Grande`, atualmente UTC−4, com `zoneinfo` e `tzdata`. O agente combina relógio, calendário BR/MS e expediente de `search_policy`. `holidays` evita dependência de API; municípios ficam fora do escopo. Black Friday não confirma extensão do expediente, e ausência de feriado não garante abertura. Contratos em [Tools](tools.md).
 
 Número do pedido e e-mail não comprovam controle da conta. O vínculo entre conta e cliente vem do backend, nunca de argumentos do modelo. Cadastros públicos não adotam clientes importados; contas demo recebem vínculo explícito por seed.
 
@@ -142,7 +143,7 @@ As passagens preservam fonte, versão, seção, hierarquia e páginas; os embedd
 
 ### Avaliação E Alternativas De Retrieval
 
-O diagnóstico de retrieval mede cobertura de seções em dez perguntas; o benchmark do agente avalia 38 casos, RAG Triad, tools, checks, latência e tokens. Atendimento, CLIs e benchmark usam `build_policy_retriever`; o benchmark registra metadados do retriever e seu hash de configuração.
+O diagnóstico de retrieval mede cobertura de seções em dez perguntas; o dataset do agente mantém 38 casos para RAG Triad, tools, checks, latência e tokens. Há 12 tools disponíveis, mas os planos atuais exigem apenas as 11 anteriores, sem cobertura obrigatória de `check_holiday`. Atendimento, CLIs e benchmark usam `build_policy_retriever`; o benchmark registra metadados do retriever e seu hash de configuração.
 
 Uma execução por configuração não estabelece causalidade nem significância. Reranking, decomposição automática e relações explícitas entre políticas não estão implementados; sua adoção depende de falhas demonstradas e ganho medido.
 

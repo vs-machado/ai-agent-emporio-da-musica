@@ -32,7 +32,8 @@ def test_store_clock_respects_local_date_and_iana_rules(
     assert result["timezone"] == "America/Campo_Grande"
     assert datetime.fromisoformat(result["datetime"]) == datetime.fromisoformat(instant)
     assert result["utc_datetime"] == instant
-    assert result["holiday_calendar_available"] is False
+    assert result["holiday_calendar_available"] is True
+    assert result["holidays_checked"] is False
     assert "is_open" not in result
 
 
@@ -64,7 +65,8 @@ def test_clock_tool_works_without_database_or_api_key():
     assert result["status"] == "ok"
     assert before <= datetime.fromisoformat(result["datetime"]) <= after
     assert result["timezone"] == "America/Campo_Grande"
-    assert result["holiday_calendar_available"] is False
+    assert result["holiday_calendar_available"] is True
+    assert result["holidays_checked"] is False
 
 
 @pytest.mark.parametrize("arguments", [{"timezone": "UTC"}, {"date": "2000-01-01"}])

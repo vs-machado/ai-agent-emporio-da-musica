@@ -8,12 +8,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.schemas.base import Input
+from app.schemas.calendar import HolidayLookup
 from app.schemas.catalog import ProductDetails, ProductSearch, PromotionSearch
 from app.schemas.clock import CurrentDateTime
 from app.schemas.commerce import PaymentQuote, ShippingQuote
 from app.schemas.orders import ComplaintRegistration, OrderLookup, RefundQuote
 from app.schemas.policies import PolicySearch
 from app.schemas.web import PostalCodeLookup
+from app.services.calendar import CalendarService
 from app.services.catalog import CatalogService
 from app.services.clock import ClockService
 from app.services.commerce import CommerceService
@@ -84,7 +86,7 @@ def build_tools(
             RAG não estiver configurado; a tool reporta essa indisponibilidade.
 
     Returns:
-        Onze tools com schemas e descrições em português. As operações comerciais
+        Doze tools com schemas e descrições em português. As operações comerciais
         só simulam condições, e o registro de reclamações não notifica a equipe.
     """
     catalog = CatalogService(sessions)
@@ -93,15 +95,27 @@ def build_tools(
     orders = OrderService(sessions)
     policies = PolicyService(policy_retriever)
     clock = ClockService()
+    calendar = CalendarService()
     definitions = (
         (
             "get_current_datetime",
             "Consulta data, hora e dia da semana atuais no fuso America/Campo_Grande, "
             "incluindo offset UTC. Sem parâmetros e sem acesso ao banco. Use para referências "
             "a hoje, agora e expediente atual; consulte search_policy para os horários da loja. "
-            "Não verifica feriados, horários especiais nem confirma se a loja está aberta.",
+            "Use check_holiday para verificar feriados nacionais e de MS na data retornada. "
+            "O relógio não verifica feriados, horários especiais nem confirma abertura.",
             CurrentDateTime,
             clock.get_current_datetime,
+        ),
+        (
+            "check_holiday",
+            "Verifica offline se uma data YYYY-MM-DD é feriado nacional ou de MS, usando "
+            "holidays. Para hoje/agora, consulte get_current_datetime e use a data local. "
+            "Combine com search_policy para o expediente. Não consulta feriados municipais, "
+            "pontos facultativos ou horários especiais. Não confirma abertura nem extensão "
+            "na Black Friday; ausência de feriado vale apenas para o calendário consultado.",
+            HolidayLookup,
+            calendar.check_holiday,
         ),
         (
             "search_products",

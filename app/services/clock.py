@@ -52,5 +52,6 @@ class ClockService:
             "weekday_iso": local.isoweekday(),
             "is_daylight_saving_time": local.dst() != timedelta(0),
             "utc_datetime": instant.astimezone(UTC).isoformat(timespec="seconds"),
-            "holiday_calendar_available": False,
+            "holiday_calendar_available": True,
+            "holidays_checked": False,
         }
