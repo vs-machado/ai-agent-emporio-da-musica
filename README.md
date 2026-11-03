@@ -22,6 +22,7 @@ mantendo explícitas as limitações do atendimento automatizado.
 | Arquitetura | [Visão geral](#arquitetura-e-decisões-técnicas) · [Decisões técnicas](docs/decisoes-tecnicas.md) · [Agente](docs/agente.md) |
 | Dados e ferramentas | [Ingestão](docs/ingestao-de-dados.md) · [RAG](docs/rag.md) · [Tools](docs/tools.md) · [Consultas externas](docs/consultas-externas.md) |
 | Interface e acesso | [Autenticação e contas demo](docs/autenticacao.md) · [API](docs/api-chat.md) · [Interface](docs/interface-chat.md) |
+| Conversas | [Cinco exemplos reais de interação](#exemplos-de-interação) |
 | Qualidade e avaliação | [Verificações locais](docs/qualidade-de-codigo.md#verificações-locais) · [Benchmarks](docs/benchmarks.md) · [Resultados e custos](docs/decisao-rag-e-custos.md) |
 | Desenvolvimento | [Limitações e evolução](#avaliação-e-limitações) · [Uso de IA](#uso-de-ia-no-desenvolvimento) |
 
@@ -233,6 +234,12 @@ Limitações e próximos passos priorizados:
 
 - **Erros da LLM:** ainda pode haver interpretação equivocada, informação sem
   suporte suficiente ou promessa incompatível com as capacidades do sistema.
+- **Busca e comunicação de disponibilidade:** melhorar as consultas por modelos
+  específicos e distinguir produto inexistente, sem estoque e descontinuado.
+  Nas conversas registradas, buscas restritas a disponíveis levaram o agente a
+  afirmar que modelos descontinuados não constavam no catálogo. O atendimento
+  deve esclarecer que não estão à venda, mesmo quando houver unidades registradas
+  em estoque, sem confundir quantidade física com disponibilidade comercial.
 - **Revisão dos benchmarks:** `factual_correctness` registrou **31,9% em 20 casos**
   na linha de base. É necessário revisar referências, critérios e respostas caso
   a caso e repetir a avaliação. Problemas metodológicos são uma hipótese, não
@@ -265,5 +272,15 @@ aplicação é o **DeepSeek V4.1 Flash** (`openrouter/deepseek/deepseek-v4.1-fla
 O **Gemini Embedding** (`gemini-embedding-001`) é usado nos embeddings e o
 **MiMo-V2.6-Flash** (`xiaomi/mimo-v2.6-flash`) nas avaliações registradas.
 
-**Exemplos de interação:** os 3 a 5 exemplos de conversas exigidos pelo desafio
-serão adicionados em uma etapa posterior.
+## Exemplos de interação
+
+Cinco conversas realizadas na aplicação em 03/11/2026, transcritas do banco com
+as mensagens originais do cliente e da HarmonIA. Ao todo, são 33 turnos de atendimento.
+
+| Conversa | Cenários demonstrados |
+|---|---|
+| [1. Ukulele para iniciante](docs/conversas/01-ukulele-pix-frete.md) | Recomendação, catálogo, desconto PIX e frete local pago |
+| [2. Guitarra e formas de pagamento](docs/conversas/02-guitarra-cep-pagamento.md) | Catálogo, promoções, consulta de CEP, frete grátis e parcelamento |
+| [3. Pedido atrasado e reclamação](docs/conversas/03-pedido-atrasado-reclamacao.md) | Horário atual, consulta do pedido autenticado, rastreamento e registro de protocolo |
+| [4. Violão Taylor e devolução](docs/conversas/04-taylor-devolucao-entrega.md) | Refinamento da busca, detalhes do produto, parcelamento, políticas de devolução e entrega para outra região |
+| [5. Escopo e produtos descontinuados](docs/conversas/05-escopo-produtos-descontinuados.md) | Acessórios não comercializados, pergunta fora do escopo, alternativas e esclarecimento sobre descontinuação |
