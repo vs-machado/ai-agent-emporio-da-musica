@@ -18,6 +18,7 @@ Use o segredo gerado no `.env`:
 AUTH_JWT_SECRET=<segredo aleatório com pelo menos 32 caracteres>
 AUTH_COOKIE_SECURE=false
 AUTH_TOKEN_MINUTES=120
+FORWARDED_ALLOW_IPS=127.0.0.1
 ```
 
 O Compose exige esse segredo. Na execução local, se a variável estiver ausente,
@@ -25,6 +26,20 @@ o processo gera um segredo efêmero: reiniciar invalida os logins. Um valor vazi
 ou menor que 32 caracteres é rejeitado. Use `AUTH_COOKIE_SECURE=true` quando o
 acesso público usar HTTPS. A implantação atual usa um worker: estado e fila do
 Gradio ficam em memória.
+
+### HTTPS atrás do Coolify ou de outro proxy
+
+O proxy termina o HTTPS e encaminha HTTP para o Uvicorn. Configure
+`FORWARDED_ALLOW_IPS` com o IP ou CIDR confiável desse proxy, além de localhost
+(por exemplo, `127.0.0.1,10.0.14.2`). O Compose passa essa variável ao Uvicorn,
+que então reconhece `X-Forwarded-Proto` e preserva a origem HTTPS na validação
+CSRF. Mantenha `AUTH_COOKIE_SECURE=true` no acesso público HTTPS.
+
+No Coolify, configure essas variáveis nas configurações da aplicação e aplique
+um novo deploy. O `.env` do checkout local não é sincronizado automaticamente.
+Use o endereço real do proxy/rede e não confie indiscriminadamente em qualquer
+origem. Sem essa configuração, um POST legítimo pode retornar 403
+`Origem da solicitação inválida`, antes mesmo de verificar a senha.
 
 ## Uso
 
