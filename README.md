@@ -253,6 +253,8 @@ Limitações e próximos passos priorizados:
 - **Atendimento humano:** integrar encaminhamento, acompanhamento e confirmação
   de solicitações. Hoje, registrar uma reclamação gera protocolo no banco, sem
   notificar a equipe ou garantir retorno.
+- **Ferramenta de OCR:** implementar uma tool para extrair texto de imagens e
+  documentos digitalizados, permitindo usar essas informações no atendimento.
 - **Frete para outras regiões:** adicionar ferramenta de pesquisa na internet
   para obter dimensões dos produtos e evoluir o cálculo de frete. Atualmente,
   ViaCEP informa endereço, não tarifa; destinos externos dependem de confirmação
