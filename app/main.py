@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from app.agents.factory import build_chat_service
 from app.config import Settings
 from app.database import create_database_engine, create_session_factory
-from app.rag.retrieval import LlamaIndexPolicyRetriever
+from app.rag.retrieval import build_policy_retriever
 from app.routes.auth import SameOriginMiddleware
 from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     app.state.session_factory = create_session_factory(engine)
     app.state.auth_service = AuthService(app.state.session_factory, settings)
     try:
-        app.state.policy_retriever = LlamaIndexPolicyRetriever(engine, settings)
+        app.state.policy_retriever = build_policy_retriever(engine, settings)
         app.state.tools = build_tools(app.state.session_factory, app.state.policy_retriever)
         app.state.chat_service = build_chat_service(
             settings, app.state.tools, session_factory=app.state.session_factory

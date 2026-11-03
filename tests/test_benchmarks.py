@@ -73,7 +73,7 @@ def test_new_scenarios_are_explicitly_skipped_in_historical_mode(tmp_path, monke
     import app.benchmarks.runner as runner
 
     monkeypatch.setattr(runner, "snapshot", lambda *args: {"rag": {"active_index": None}})
-    monkeypatch.setattr(runner, "LlamaIndexPolicyRetriever", lambda *args: None)
+    monkeypatch.setattr(runner, "build_policy_retriever", lambda *args: None)
 
     def forbidden(*args):
         pytest.fail("Caso sem origem não deve consultar turnos históricos")
@@ -207,7 +207,7 @@ def test_live_runner_exposes_same_eleven_tools_as_attendance(tmp_path, monkeypat
         )
 
     monkeypatch.setattr(runner, "snapshot", lambda *args: {"rag": {"active_index": None}})
-    monkeypatch.setattr(runner, "LlamaIndexPolicyRetriever", lambda *args: None)
+    monkeypatch.setattr(runner, "build_policy_retriever", lambda *args: None)
     monkeypatch.setattr(runner, "build_chat_service", service)
     directory, report = asyncio.run(
         run_benchmark(
@@ -331,7 +331,7 @@ def test_historical_runner_captures_partial_results_without_mutating_chats(tmp_p
     import app.benchmarks.runner as runner
 
     monkeypatch.setattr(runner, "snapshot", lambda *args: {"rag": {"active_index": None}})
-    monkeypatch.setattr(runner, "LlamaIndexPolicyRetriever", lambda *args: None)
+    monkeypatch.setattr(runner, "build_policy_retriever", lambda *args: None)
     monkeypatch.setattr(
         runner,
         "historical_turn",
@@ -369,7 +369,7 @@ def test_live_oracle_is_not_injected_into_grounding_context(tmp_path, monkeypatc
             return {}
 
     monkeypatch.setattr(runner, "snapshot", lambda *args: {"rag": {"active_index": None}})
-    monkeypatch.setattr(runner, "LlamaIndexPolicyRetriever", lambda *args: None)
+    monkeypatch.setattr(runner, "build_policy_retriever", lambda *args: None)
     service = SimpleNamespace(
         chat=lambda *args: SimpleNamespace(
             messages=[HumanMessage(content="Tem bateria?"), AIMessage(content="Não temos")],
@@ -405,7 +405,7 @@ def test_interrupted_run_preserves_finished_cases_and_final_report(tmp_path, mon
     import app.benchmarks.runner as runner
 
     monkeypatch.setattr(runner, "snapshot", lambda *args: {"rag": {"active_index": None}})
-    monkeypatch.setattr(runner, "LlamaIndexPolicyRetriever", lambda *args: None)
+    monkeypatch.setattr(runner, "build_policy_retriever", lambda *args: None)
 
     def interrupted(*args):
         raise KeyboardInterrupt
@@ -436,6 +436,9 @@ def test_redaction_never_exports_secret_configuration_values():
 
 def test_retrieval_failure_is_logged_without_sdk_error_details():
     class FailingRetriever:
+        def metadata(self):
+            return {"strategy": "test", "parameters": {}}
+
         def retrieve(self, query, limit):
             raise RuntimeError("secret-provider-url")
 

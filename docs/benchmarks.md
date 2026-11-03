@@ -200,6 +200,83 @@ solicitada da configuração efetivamente armazenada no índice ativo. Mantenha
 dataset, índice, modelo e demais parâmetros constantes ao comparar top-k.
 Repita execuções para avaliar variabilidade; temperatura 0 não garante determinismo.
 
+### Comparar retrieval atual e busca híbrida
+
+O atendimento, as CLIs e o benchmark constroem o retriever pela mesma fábrica:
+`app.rag.retrieval.build_policy_retriever(engine, settings)`. Uma implementação
+futura é selecionada nessa fábrica, sem alterações no benchmark nem no dataset.
+O retriever deve manter estes métodos:
+
+- `search(query, limit)`: retorna `list[PolicyPassage]` para a tool de políticas.
+- `metadata()`: retorna um dicionário JSON público com `strategy`, `parameters`
+  e, opcionalmente, uma `version` da implementação/algoritmo. Deve descrever os
+  parâmetros efetivos, sem credenciais, clientes HTTP ou objetos de runtime.
+- `retrieve(query, limit)`: retorna `RetrievalResult(passages, mode,
+  candidate_count, diagnostics={})`. `mode` identifica o caminho realmente usado;
+  `diagnostics` aceita campos JSON arbitrários, como candidatos por etapa,
+  tempo de fusão, uso de reranker ou motivos de fallback.
+
+O benchmark não enumera estratégias nem interpreta parâmetros de fusão/reranking.
+Por exemplo, um retriever híbrido pode informar:
+
+```json
+{
+  "strategy": "hybrid",
+  "version": 1,
+  "parameters": {
+    "vector": {"top_k": 10, "metric": "cosine"},
+    "text": {"top_k": 10, "language": "portuguese"},
+    "fusion": {"method": "rrf", "k": 60},
+    "reranker": null,
+    "context_tokens": 2000,
+    "max_passages": 5
+  }
+}
+```
+
+A implementação atual informa `vector_with_text_fallback`, com modelo/dimensão
+de embeddings, top-k vetorial/textual, ranking textual, condição do fallback,
+orçamento de contexto, expansão, deduplicação e limite final de passagens.
+Isso continua sendo fallback em erro, não fusão híbrida.
+
+Manifest e relatório guardam os metadados em `configuration.rag.retrieval` e seu
+hash canônico em `configuration.rag.retrieval_sha256` (ordem das chaves não altera
+o hash). Cada consulta também registra a configuração informada naquele instante
+e seus diagnósticos. O hash identifica a configuração declarada, não prova
+identidade do código: commit e hashes dos fontes continuam registrados.
+
+Para comparação direta, faça duas execuções **live** com o mesmo dataset/hash,
+casos selecionados, manual/índice, modelo/prompt, avaliador e orçamento final de
+contexto, alterando apenas o retrieval desejado. Compare métricas e checks dos
+mesmos `case_id`, latência e consumo de tokens. Não é necessário alterar o gabarito
+quando mudar de vetorial para híbrido. Não há métricas de ranking como MRR/nDCG:
+a avaliação existente mede qualidade final e cobertura das seções esperadas.
+
+### Consumo de tokens
+
+Cada caso e o resumo final incluem `token_usage`, separado em `agent` e `judge`,
+com entrada, saída, total, quantidade de chamadas com dados disponíveis e totais
+por modelo. As chamadas brutas preservam também os detalhes de cache/raciocínio
+informados pelo provedor; esses detalhes não são somados de novo ao total.
+
+- **Agente:** usa `AIMessage.usage_metadata` das chamadas do turno, incluindo
+  rodadas intermediárias de tools e modelos de fallback que geraram mensagens.
+  Tentativas que falharam sem retornar mensagem/usage não são recuperáveis por
+  essa captura; os totais não equivalem necessariamente à fatura do provedor.
+- **Avaliador:** captura usage das requisições HTTP de chat do cliente dedicado,
+  inclusive tentativas descartadas/repetidas pelo Ragas. Requisição sem resposta
+  ou resposta sem usage permanece desconhecida.
+- **Embeddings:** o adaptador atual não expõe usage ao benchmark; o consumo fica
+  `not_recorded`, com total nulo, tanto para retrieval quanto para o avaliador.
+- **Custo monetário:** não é calculado sem preços configurados. Compare tokens
+  por modelo e aplique as tarifas correspondentes, considerando cache e descontos.
+
+`partial` indica que há chamadas/casos sem consumo registrado; os totais então
+são apenas a soma conhecida. Ausência de usage é `null`, não zero.
+`no_calls` representa zero chamadas capturadas (por exemplo, judge desabilitado).
+Em `historical`, os tokens do agente são os salvos no turno antigo, quando
+disponíveis; os tokens do judge são gastos novos dessa avaliação.
+
 ## Persistência e diagnóstico
 
 Cada execução cria `benchmark-results/<timestamp>-<uuid>/`, ignorado pelo Git:
@@ -219,12 +296,14 @@ Cada execução cria `benchmark-results/<timestamp>-<uuid>/`, ignorado pelo Git:
   cada caso inclui seu contrato e o plano selecionado, tools faltantes, inesperadas
   ou proibidas, violações de schema e falhas de execução, sem expor valores inválidos.
 
-Em `live`, cada consulta de política guarda query, limite final, modo `vector`
-ou `text_fallback`, candidatos, passagens e latência. Em `historical`, o modo
+Em `live`, cada consulta de política guarda query, limite final, modo informado
+pelo retriever (atualmente `vector` ou `text_fallback`), configuração, diagnósticos,
+candidatos, passagens e latência. Em `historical`, o modo
 original e a configuração completa antiga não foram persistidos; aparecem como
 desconhecidos. O snapshot é explicitamente da configuração **atual** e não deve
-ser atribuído retroativamente à conversa antiga. Alteração do índice ativo
-durante o benchmark gera evento e marca a execução como parcial.
+ser atribuído retroativamente à conversa antiga. Alteração do índice ativo ou
+dos metadados de retrieval entre os snapshots inicial/final gera evento e marca
+a execução como parcial.
 
 `completed` significa execução concluída, **não atendimento aprovado**. Erro de
 caso, modelo indisponível ou métrica com falha produz `partial` e exit code 1.
