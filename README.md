@@ -107,7 +107,7 @@ flowchart TD
     History --> DB
 ```
 
-| Escolha | Justificativa |
+| Escolha | Papel na solução |
 |---|---|
 | **LangChain + tool calling e RAG** | Orquestra consultas por ferramentas com schemas definidos e acessa as políticas por RAG com chunking estrutural (structure-aware), busca vetorial e fallback textual, mantendo SQL, autorização e cálculos fora da LLM |
 | **DeepSeek via OpenRouter / LiteLLM** | Melhor comportamento observado no catálogo e nas ferramentas durante o desenvolvimento, com custo competitivo e acesso desacoplado do provedor |
@@ -115,22 +115,88 @@ flowchart TD
 | **PostgreSQL, SQLAlchemy e Alembic** | Persistência transacional de dados, contas e conversas, com schema versionado |
 | **LlamaIndex + pgvector** | Implementa o RAG com chunks por seção/subseção, busca vetorial por similaridade de cosseno e fallback para busca textual PostgreSQL em caso de falha vetorial, preservando evidências e metadados |
 
+### Framework e abordagem do agente
+
+O **LangChain** foi escolhido pela facilidade de implementar tool calling, pela
+integração com diferentes modelos e pela familiaridade prévia com o ecossistema
+LangChain/LangGraph. Isso permitiu concentrar o desenvolvimento nas ferramentas e
+nas regras do atendimento, em vez de implementar manualmente o ciclo de chamadas
+ao modelo.
+
+Não foi necessário construir um grafo customizado com **LangGraph**: o fluxo de
+atendimento podia ser resolvido pelo agente com ferramentas, sem etapas que
+exigissem uma orquestração explícita em grafo. O LangChain utiliza LangGraph
+internamente, mas o projeto não define um grafo próprio.
+
+### API e interface
+
+O **FastAPI** foi escolhido para desenvolver a API em Python, com validação de
+entradas e documentação automática, facilitando a implementação e a exploração
+dos endpoints.
+
+O **Gradio** permitiu entregar um chat funcional sem construir e manter um frontend
+separado. Essa escolha priorizou o desenvolvimento e a avaliação do agente, que
+são o foco do desafio.
+
+### Persistência
+
+O **PostgreSQL com pgvector** foi escolhido para concentrar dados operacionais,
+histórico de conversas e embeddings em um único banco, evitando um serviço
+adicional para a busca vetorial.
+
+Embora SQLite pudesse simplificar o protótipo, PostgreSQL aproxima a solução de
+um ambiente de produção. A contrapartida é exigir um serviço de banco, incluído
+no Docker Compose para simplificar a execução.
+
+### Modelo e acesso aos provedores
+
+O **DeepSeek V4.1 Flash via OpenRouter** foi escolhido pelo comportamento observado
+nos testes de atendimento e tool calling, após dificuldades com Gemini Flash-Lite,
+e pelo custo competitivo. A decisão se baseia nos cenários do projeto, sem
+representar uma comparação universal entre os modelos.
+
+O **LiteLLM** facilita a troca de modelos e provedores por uma interface comum e
+permite configurar fallback, reduzindo o acoplamento da aplicação a um único
+provedor.
+
+### RAG e recuperação das políticas
+
+O **LlamaIndex** foi escolhido pela familiaridade prévia com a biblioteca e por
+oferecer componentes para representar os trechos do manual, preservar seus
+metadados e integrar a recuperação ao pgvector. A biblioteca permite separar o
+processamento e a busca de conhecimento da orquestração do agente, mantendo o RAG
+acessível pela ferramenta `search_policy`.
+
+O **chunking estrutural** foi definido a partir da organização do manual em seções
+e subseções. Essa abordagem preserva regras, listas e tabelas em unidades
+completas, reduzindo a fragmentação de informações necessárias para interpretar
+uma política. Os trechos mantêm referências de origem, seção e página para
+inspeção e avaliação.
+
+A **busca vetorial com fallback textual** foi mantida após os experimentos com
+diferentes configurações de recuperação. A busca vetorial permite recuperar
+trechos por proximidade semântica; quando ocorre falha na geração de embeddings
+ou na consulta vetorial, a busca textual do PostgreSQL oferece um caminho
+alternativo sobre o índice ativo. As comparações com `top_k=10` e BM25 + RRF não
+demonstraram ganho consistente que justificasse substituir a configuração atual.
+
+Somente `kb/políticas_da_loja.pdf` é indexado; os CSVs são consultados como dados
+relacionais. O manual atual produz 25 chunks, com embeddings Gemini de 768
+dimensões, similaridade de cosseno, `top_k=5` e orçamento de aproximadamente 2.000
+tokens de contexto. O fallback textual não é uma fusão híbrida dos resultados.
+
+Como o material contém apenas um PDF curto, uma implementação sem biblioteca de
+RAG também seria viável. A escolha do LlamaIndex priorizou uma estrutura
+extensível para indexação e recuperação, aceitando maior complexidade e mais
+dependências no protótipo. Detalhes em [RAG](docs/rag.md) e
+[decisão de RAG e custos](docs/decisao-rag-e-custos.md).
+
+### Dados, prompt e histórico
+
 **Dados e ingestão.** Os seis CSVs de `agent-data/` são validados antes de uma
 carga transacional com upsert: tipos, valores monetários, status, JSON e
 relacionamentos. Os arquivos originais são preservados. Preços históricos e datas
 de recebimento ausentes não são inferidos. Consulte [ingestão](docs/ingestao-de-dados.md).
-
-**RAG.** Somente `kb/políticas_da_loja.pdf` é indexado; os CSVs são consultados como
-dados relacionais. O chunking segue a estrutura de seções/subseções do manual e
-preserva listas, tabelas e referências. O manual atual produz 25 chunks, com
-embeddings Gemini de 768 dimensões, busca por cosseno, `top_k=5` e orçamento de
-aproximadamente 2.000 tokens de contexto. Falhas vetoriais acionam busca textual
-PostgreSQL; isso não é busca híbrida. Para um PDF curto, uma abordagem mais simples
-também seria possível; a escolha permite demonstrar RAG e evoluir a base.
-
-A estratégia foi mantida após comparar busca vetorial, `top_k=10` e BM25 + RRF:
-não houve ganho consistente que justificasse a complexidade adicional. Detalhes
-em [RAG](docs/rag.md) e [decisão de RAG e custos](docs/decisao-rag-e-custos.md).
 
 **Prompt.** O [system prompt](app/agents/prompt.py) define persona, tom, fontes
 obrigatórias e tratamento de ambiguidades e perguntas fora do escopo. O agente
