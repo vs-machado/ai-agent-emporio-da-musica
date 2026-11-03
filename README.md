@@ -14,6 +14,9 @@ mantendo explícitas as limitações do atendimento automatizado.
 > Para acessar uma conta de demonstração já cadastrada a partir da lista de
 > clientes, use o e-mail do cliente e a senha padrão **`senha12345`**.
 
+<img width="2514" height="1306" alt="emporio_musica_1" src="https://github.com/user-attachments/assets/15af1638-247c-426c-8631-2a0c15ac836c" />
+<img width="2514" height="1306" alt="emporio_musica_2" src="https://github.com/user-attachments/assets/6e2a0712-02a0-40f0-9029-ec5be9c5a222" />
+
 ## Navegação rápida
 
 | Assunto | Links |
