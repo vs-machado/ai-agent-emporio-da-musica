@@ -333,13 +333,19 @@ Isso não substitui revisão de dados pessoais ao acrescentar novos casos. Não
 exporte históricos completos de clientes indiscriminadamente. Analytics do Ragas
 é desabilitado por padrão para este módulo.
 
-## Baseline observado
+## Resultados registrados
+
+A [linha de base atual](benchmark-baseline-rag-vetorial.md) usa 38 casos e avaliador MiMo.
+Veja também as comparações com [busca híbrida](resultados-busca-hibrida.md) e
+[top-k 10](benchmark-comparacao-top-k.md). O padrão permanece vetorial com top-k 5.
+
+### Diagnóstico histórico inicial
 
 Execução histórica `20261102T134941Z-523dcf83`, dez casos, avaliador
 `gemini-2.5-flash`, sem falhas de métricas:
 
 Esse baseline corresponde à versão inicial de dez perguntas e ao replay com cinco
-tools. Novas execuções usam o dataset de 31 perguntas e as 11 tools, conforme o manifest;
+tools. Novas execuções usam o dataset de 38 perguntas e as 11 tools, conforme o manifest;
 as médias não devem ser comparadas diretamente sem igualar casos e configuração.
 
 | Métrica | Média | Avaliados / pulados |

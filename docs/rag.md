@@ -16,8 +16,8 @@ uv run python -m app.rag --inspect
 
 `--inspect` não exige configuração de banco nem chave do Gemini. Extrai o PDF,
 valida sua estrutura e informa seções, páginas e contagens aproximadas de tokens
-com o limite padrão de 1.000 tokens por chunk. Para o manual 2.1 são 28 seções e
-25 chunks. A capa não é uma unidade de política; títulos ancestrais sem corpo
+com teto fixo de 1.000 tokens por chunk, sem ler `RAG_CHUNK_TOKENS`.
+O manual 2.1 tem 28 seções e 25 chunks. A capa não é uma unidade de política; títulos ancestrais sem corpo
 permanecem na hierarquia. Cabeçalhos e rodapés repetidos são removidos.
 
 Configure `GOOGLE_API_KEY` em `.env` para gerar embeddings reais e execute:
@@ -50,17 +50,17 @@ indexação, com banco e migrations já preparados. Um índice idêntico existen
 reutilizado sem chamar o provedor.
 
 As variáveis do Compose incluem a chave e os parâmetros RAG. `OPENROUTER_API_KEY`
-é opcional e habilita o fallback de chat DeepSeek via OpenRouter;
-não é usada nos embeddings. Não há indexação no lifespan da API nem na ingestão dos CSVs.
+é usada pelo chat DeepSeek padrão, não pelos embeddings; sua presença não habilita fallback.
+Não há indexação no lifespan da API nem na ingestão dos CSVs.
 Fora do Docker, o tiktoken pode baixar o vocabulário em sua primeira utilização;
 depois reutiliza seu cache local.
 
-## Configuração inicial
+## Configuração
 
 | Variável | Padrão | Uso |
 |---|---|---|
 | `GOOGLE_API_KEY` | vazia | Necessária para novos embeddings; não é armazenada no índice |
-| `OPENROUTER_API_KEY` | vazia | Opcional; habilita o fallback de chat DeepSeek |
+| `OPENROUTER_API_KEY` | vazia | Chat DeepSeek padrão; não é necessária para retrieval |
 | `RAG_EMBEDDING_MODEL` | `gemini-embedding-001` | Mesmo modelo para documentos e perguntas |
 | `RAG_EMBEDDING_DIMENSIONS` | `768` | Dimensão fixa nesta migration |
 | `RAG_TOP_K` | `5` | Candidatos antes de expansão e deduplicação |
@@ -143,10 +143,10 @@ privacidade e reclamações. O relatório JSON inclui:
 
 O relatório mede cobertura de seções, não a qualidade das respostas geradas nem
 a presença de cada frase necessária dentro de chunks parciais. Referências,
-condições e exceções ainda devem ser conferidas. Compare `RAG_TOP_K=3`, `5` e `8`
-com o mesmo orçamento e limite final. Registre se o caminho foi vetorial ou fallback
-para não atribuir resultados textuais ao Gemini. A qualidade semântica real só
-pode ser validada após indexar e consultar com embeddings do provedor.
+condições e exceções ainda devem ser conferidas. Os experimentos com
+[top-k 10](benchmark-comparacao-top-k.md) e [busca híbrida](resultados-busca-hibrida.md)
+não justificaram a troca: o padrão permanece vetorial, `top_k=5`.
+Registre o caminho efetivo para não atribuir resultados textuais aos embeddings.
 
 ## Testes locais
 

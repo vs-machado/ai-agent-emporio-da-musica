@@ -2,8 +2,8 @@
 
 ## Objetivo e escopo
 
-Este documento registra o resultado da implementação anterior à busca híbrida,
-avaliada no commit `041fe5309a422a3ed9da918b38459f692dea83ab`.
+Este documento registra a linha de base vetorial avaliada no commit
+`041fe5309a422a3ed9da918b38459f692dea83ab`, estratégia mantida na `develop`.
 O foco do benchmark neste momento é a **RAG Triad**:
 
 1. **Relevância do contexto:** o contexto recuperado é relevante para a pergunta?

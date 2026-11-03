@@ -25,7 +25,7 @@ docker compose up -d --build --wait
 docker compose logs migrate ingest
 ```
 
-O Compose aguarda o PostgreSQL saudável, executa `migrate`, depois `ingest` e inicia a API após ambos terminarem com sucesso. Os serviços de preparação encerram com código 0 e não têm reinício automático. Não é necessário executar migrations e carga manualmente nesse fluxo.
+O Compose aguarda o banco saudável, aplica migrations e executa ingestão e indexação em paralelo. Após a ingestão, provisiona as contas demo; a API aguarda todas as etapas. Veja a sequência em [Docker](docker.md). Os serviços de preparação encerram com código 0, sem reinício automático.
 
 Para reaplicar apenas a carga com o banco e o schema já preparados:
 
@@ -70,7 +70,7 @@ Os testes de validação executam sem banco:
 uv run pytest tests/test_ingestion_validation.py
 ```
 
-Os testes de integração exigem PostgreSQL com pgvector instalado e um banco dedicado cujo nome termine em `_test`. Eles aplicam as migrations e limpam as seis tabelas entre testes. Nunca aponte essa configuração para um banco com dados a preservar.
+Os testes de integração exigem PostgreSQL com pgvector e banco dedicado terminado em `_test`. Aplicam migrations e limpam as tabelas da aplicação entre testes. Nunca use um banco com dados a preservar.
 
 ```bash
 TEST_DATABASE_URL=postgresql+psycopg://usuario:senha@localhost:5432/emporio_test uv run pytest

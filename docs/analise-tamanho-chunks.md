@@ -38,11 +38,10 @@ melhoria ou piora de qualidade comprovada por benchmark. A execução com chunks
 de 256 tokens (`20261103T140727Z-550c5bbe`) foi interrompida antes de concluir o
 primeiro caso para evitar gasto com uma comparação de baixo poder informativo.
 
-A prioridade experimental passou a ser aumentar os candidatos recuperados
-(`top_k=5` para `top_k=10`) e comparar estratégias de busca, mantendo o chunking
-original, até cinco passagens finais e o orçamento de 2.000 tokens. O foco da
-avaliação permanece a **RAG Triad**: relevância do contexto, fundamentação nas
-evidências e relevância da resposta.
+Os testes de [top-k 10](benchmark-comparacao-top-k.md) e
+[busca híbrida](resultados-busca-hibrida.md) foram concluídos, com foco na RAG Triad.
+A configuração mantida é vetorial com `top_k=5`, teto de 1.000 tokens por chunk,
+até cinco passagens finais e orçamento de 2.000 tokens.
 
 Essa análise vale para o manual e o parser indicados. Deve ser refeita se o
 documento crescer, o parser mudar ou a política de expansão for alterada.
