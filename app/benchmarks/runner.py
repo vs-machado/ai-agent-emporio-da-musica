@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.agents.factory import build_chat_service
 from app.benchmarks.reporting import RunLog, redact, snapshot
+from app.benchmarks.usage import run_token_usage
 from app.models import ConversationTurn, User
-from app.rag.retrieval import LlamaIndexPolicyRetriever
+from app.rag.retrieval import build_policy_retriever
 from app.schemas.catalog import ProductSearch, PromotionSearch
 from app.schemas.chat import ChatRequest
 from app.services.auth import Principal
@@ -79,6 +80,7 @@ class RecordingRetriever:
 
     def search(self, query, limit=5):
         started = perf_counter()
+        configuration = json.loads(json.dumps(self.retriever.metadata(), allow_nan=False))
         try:
             result = self.retriever.retrieve(query, limit)
         except Exception as exc:
@@ -87,6 +89,7 @@ class RecordingRetriever:
                     "query": query,
                     "limit": limit,
                     "mode": "unavailable",
+                    "configuration": configuration,
                     "error_type": type(exc).__name__,
                     "latency_seconds": perf_counter() - started,
                 }
@@ -97,7 +100,9 @@ class RecordingRetriever:
                 "query": query,
                 "limit": limit,
                 "mode": result.mode,
+                "configuration": configuration,
                 "candidate_count": result.candidate_count,
+                "diagnostics": result.diagnostics,
                 "latency_seconds": perf_counter() - started,
                 "passages": [p.model_dump() for p in result.passages],
             }
@@ -216,11 +221,12 @@ def checks(case, response, actual, oracle=None):
 
 
 async def run_benchmark(
-    engine, settings, dataset, scorer, *, mode, output, judge_config, cases=None
+    engine, settings, dataset, scorer, *, mode, output, judge_config, cases=None, judge_usage=None
 ):
-    config = snapshot(engine, settings)
+    retriever = build_policy_retriever(engine, settings)
+    config = snapshot(engine, settings, retriever)
     sessions = sessionmaker(engine)
-    recorder = RecordingRetriever(LlamaIndexPolicyRetriever(engine, settings))
+    recorder = RecordingRetriever(retriever)
     tools = benchmark_tools(engine, sessions, recorder)
     selected = [c for c in dataset.cases if cases is None or c.id in cases]
     if not selected:
@@ -263,6 +269,7 @@ async def run_benchmark(
     try:
         for case in selected:
             started = perf_counter()
+            usage_start = len(judge_usage.calls) if judge_usage is not None else 0
             recorder.calls.clear()
             log.event("case_started", case_id=case.id)
             if mode == "historical" and (
@@ -368,14 +375,23 @@ async def run_benchmark(
                 result = {"case_id": case.id, "status": "error", "error_type": type(exc).__name__}
                 if isinstance(exc, BenchmarkFixtureError):
                     result["reason"] = "authenticated_fixture_missing"
+            result["judge_model_calls"] = (
+                judge_usage.calls[usage_start:]
+                if judge_usage is not None
+                else ([] if not judge_config.get("enabled", True) else None)
+            )
+            result["token_usage"] = run_token_usage([result])
             results.append(result)
             log.event("case_finished", **result)
             log.write("partial.json", {"results": results})
         # Detectar mudanças de índice/configuração durante a execução.
-        final_config = snapshot(engine, settings)
+        final_config = snapshot(engine, settings, retriever)
         if config["rag"]["active_index"] != final_config["rag"]["active_index"]:
             status = "partial"
             log.event("active_index_changed", final_index=final_config["rag"]["active_index"])
+        if config["rag"].get("retrieval") != final_config["rag"].get("retrieval"):
+            status = "partial"
+            log.event("retrieval_configuration_changed", retrieval=final_config["rag"]["retrieval"])
     except BaseException:
         log.finish(results, "interrupted")
         raise

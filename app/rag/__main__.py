@@ -14,7 +14,7 @@ from app.rag.errors import PolicyIndexingError
 from app.rag.evaluation import evaluate
 from app.rag.indexing import DEFAULT_MANUAL_PATH, index_manual
 from app.rag.parser import build_nodes, parse_manual, token_count
-from app.rag.retrieval import LlamaIndexPolicyRetriever
+from app.rag.retrieval import build_policy_retriever
 from app.schemas.policies import PolicySearch
 from app.services.errors import PolicyRetrievalError
 from app.services.policies import PolicyService
@@ -45,11 +45,11 @@ def main() -> int:
         engine = create_database_engine(settings)
         try:
             if args.evaluate:
-                report = evaluate(LlamaIndexPolicyRetriever(engine, settings))
+                report = evaluate(build_policy_retriever(engine, settings))
                 print(json.dumps(report, ensure_ascii=False, indent=2))
                 return 0
             if args.query:
-                service = PolicyService(LlamaIndexPolicyRetriever(engine, settings))
+                service = PolicyService(build_policy_retriever(engine, settings))
                 response = service.search_policy(PolicySearch(query=args.query))
                 print(json.dumps(response, ensure_ascii=False, indent=2))
                 return 1 if response["status"] == "unavailable" else 0

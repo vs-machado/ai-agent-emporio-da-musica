@@ -1,7 +1,8 @@
 """Retrieval LlamaIndex com expansão estrutural e fallback textual PostgreSQL."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from llama_index.core import VectorStoreIndex
 from llama_index.core.base.embeddings.base import BaseEmbedding
@@ -27,9 +28,45 @@ class RetrievalResult:
     passages: list[PolicyPassage]
     mode: str
     candidate_count: int
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+def build_policy_retriever(engine: Engine, settings: Settings):
+    """Ponto único de seleção do retriever para atendimento, CLI e benchmark."""
+    return LlamaIndexPolicyRetriever(engine, settings)
 
 
 class LlamaIndexPolicyRetriever:
+    def metadata(self) -> dict[str, Any]:
+        """Contrato JSON público, sem credenciais, independente do avaliador.
+
+        Estratégias futuras mantêm strategy/parameters e podem acrescentar parâmetros
+        de fusão, reranking etc. Diagnósticos da consulta pertencem ao resultado.
+        """
+        return {
+            "strategy": "vector_with_text_fallback",
+            "version": 1,
+            "parameters": {
+                "vector": {
+                    "metric": "cosine",
+                    "top_k": self.settings.rag_top_k,
+                    "embedding_model": self.settings.rag_embedding_model,
+                    "embedding_dimensions": self.settings.rag_embedding_dimensions,
+                },
+                "text": {
+                    "engine": "postgresql_fts",
+                    "language": "portuguese",
+                    "ranking": "ts_rank_cd",
+                    "top_k": self.settings.rag_top_k,
+                },
+                "fallback_on": "vector_error",
+                "context_tokens": self.settings.rag_context_tokens,
+                "expansion": "full_subsection_if_budget_allows",
+                "deduplication": "section_and_node",
+                "max_passages": 5,
+            },
+        }
+
     def __init__(
         self, engine: Engine, settings: Settings, embed_model: BaseEmbedding | None = None
     ):
@@ -121,7 +158,10 @@ class LlamaIndexPolicyRetriever:
             candidates = self._text_search(query, index)
             mode = "text_fallback"
         return RetrievalResult(
-            self._select_evidence(candidates, index, limit), mode, len(candidates)
+            self._select_evidence(candidates, index, limit),
+            mode,
+            len(candidates),
+            {"candidate_counts": {mode: len(candidates)}},
         )
 
     def _select_evidence(
