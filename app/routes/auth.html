@@ -158,6 +158,10 @@ button:disabled {opacity: .55; cursor: wait;}
 </header>
 <p class="assistant">Seu atendimento com a <strong>HarmonIA</strong>.</p>
 <form id="account">
+<div id="name-field" class="field" hidden>
+<label for="name">Nome</label>
+<input id="name" name="name" type="text" autocomplete="name" placeholder="Seu nome" maxlength="200" required disabled>
+</div>
 <div class="field">
 <label for="email">E-mail</label>
 <input id="email" name="email" type="email" autocomplete="username" placeholder="voce@exemplo.com" maxlength="254" required>
@@ -182,6 +186,11 @@ button:disabled {opacity: .55; cursor: wait;}
 <script>
 const form = document.querySelector('#account');
 const status = document.querySelector('#status');
+const nameField = document.querySelector('#name-field');
+const nameInput = document.querySelector('#name');
+const submitButton = form.querySelector('[type="submit"]');
+const registerButton = document.querySelector('#register');
+let registering = false;
 async function submit(action) {
   if (!form.reportValidity()) return;
   const buttons = form.querySelectorAll('button');
@@ -189,23 +198,37 @@ async function submit(action) {
   status.textContent = action === 'login' ? 'Entrando…' : 'Criando conta…';
   status.dataset.kind = '';
   try {
+    const payload = {email: form.email.value, password: form.password.value};
+    if (action === 'register') payload.name = nameInput.value;
     const response = await fetch('/auth/' + action, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({email: form.email.value, password: form.password.value})
+      body: JSON.stringify(payload)
     });
     const body = await response.json();
-    if (response.ok && action === 'login') { window.location.assign('/ui/'); return; }
+    if (response.ok) { window.location.assign('/ui/'); return; }
     status.dataset.kind = response.ok ? 'success' : 'error';
     status.textContent = response.ok ? body.message :
-      (typeof body.detail === 'string' ? body.detail : 'Confira o e-mail e a senha informados.');
+      (typeof body.detail === 'string' ? body.detail : 'Confira os dados informados.');
   } catch {
     status.dataset.kind = 'error';
     status.textContent = 'Não foi possível conectar. Tente novamente.';
   }
   finally { buttons.forEach(b => b.disabled = false); }
 }
-form.addEventListener('submit', event => {event.preventDefault(); submit('login');});
-document.querySelector('#register').addEventListener('click', () => submit('register'));
+form.addEventListener('submit', event => {
+  event.preventDefault();
+  submit(registering ? 'register' : 'login');
+});
+registerButton.addEventListener('click', () => {
+  registering = !registering;
+  nameField.hidden = !registering;
+  nameInput.disabled = !registering;
+  form.password.autocomplete = registering ? 'new-password' : 'current-password';
+  submitButton.textContent = registering ? 'Criar conta' : 'Entrar';
+  registerButton.textContent = registering ? 'Já tenho conta' : 'Criar conta';
+  status.textContent = '';
+  (registering ? nameInput : form.email).focus();
+});
 </script>
 </body>
 </html>

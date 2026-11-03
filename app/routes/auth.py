@@ -26,6 +26,15 @@ class Credentials(Input):
         return value.strip().casefold() if isinstance(value, str) else value
 
 
+class Registration(Credentials):
+    name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
 def optional_user(request: Request) -> Principal | None:
     return request.app.state.auth_service.authenticate(request.cookies.get(COOKIE_NAME))
 
@@ -67,12 +76,13 @@ def entry(request: Request):
 
 
 @router.post("/register", status_code=201)
-def register(payload: Credentials, request: Request):
+def register(payload: Registration, request: Request, response: Response):
     try:
-        request.app.state.auth_service.register(payload.email, payload.password)
+        request.app.state.auth_service.register(payload.email, payload.password, payload.name)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {"message": "Conta criada. Entre com seu e-mail e senha."}
+    login(Credentials(email=payload.email, password=payload.password), request, response)
+    return {"message": "Conta criada. Entrando no atendimento."}
 
 
 @router.post("/login")
@@ -97,7 +107,12 @@ def login(payload: Credentials, request: Request, response: Response):
 @router.get("/me")
 def me(user: CurrentUser, response: Response):
     response.headers["Cache-Control"] = "no-store"
-    return {"user_id": user.user_id, "email": user.email, "customer_id": user.customer_id}
+    return {
+        "user_id": user.user_id,
+        "email": user.email,
+        "customer_id": user.customer_id,
+        "name": user.name,
+    }
 
 
 @router.post("/logout")
