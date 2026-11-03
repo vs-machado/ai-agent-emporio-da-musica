@@ -6,15 +6,17 @@ dependências do projeto; a integração usa a API `ragas.metrics.collections`.
 
 ## Dataset baseado no banco
 
-`app/benchmarks/cases.json` contém 31 casos: 28 derivados dos 56 turnos revisados
-do banco em 02/11/2026 e três cenários novos solicitados pelo usuário. O caso de
+`app/benchmarks/cases.json` contém 38 casos: os 31 anteriores (28 derivados dos
+56 turnos revisados do banco e três cenários novos) e sete cenários sintéticos
+adicionais para avaliar as 11 tools e fluxos com múltiplas chamadas. O caso de
 violão de sete cordas substitui o de eletroacústico exemplificado nas instruções;
 seu gabarito consulta somente modelos de sete cordas. Esse exemplo não é incluído
 no prompt nem nas descrições das ferramentas. Cada caso registra origem, pergunta,
 contexto necessário ao replay, tools esperadas, chamadas de referência e critérios
-de correção. A versão `2026-11-02.4` revisa a ampliação dos dez casos iniciais:
-reformula endereço/horário e catálogo de hoje, remove uma pergunta redundante e
-adiciona frete para Campo Grande por cidade e pelo CEP 79002-000, confirmado no ViaCEP.
+de correção. A versão `2026-11-02.6` acrescenta planos admissíveis de tools,
+consultas complementares e cenários de detalhes, pagamento, carrinho/frete,
+reembolso, reclamação, saudação e privacidade de pedidos. O CEP 79002-000 foi
+confirmado no ViaCEP na revisão anterior.
 As perguntas foram verificadas no banco, incluindo contexto de instrumento, nylon/aço,
 orçamento de teclado, recuperação de buscas vazias, flautas, frete e rastreamento.
 
@@ -32,6 +34,15 @@ usadas como gabarito**. Perguntas selecionadas não contêm identidades de clien
   revisado de cada caso; não é replay integral do histórico original. O caso
   `bateria_contextual` preserva a necessidade de interpretar “Quais opções você tem?”.
   Os históricos são independentes e não são gravados em `conversation_turns`.
+
+Casos com `auth_customer_id` resolvem uma conta `users` realmente vinculada ao
+cliente indicado (preparada pelo seed) e passam sua identidade ao agente, sem
+extrair autorização da pergunta. Conta não provisionada gera erro explícito
+`authenticated_fixture_missing`. Nenhum vínculo é criado pelo benchmark.
+Esses casos são `skipped: requires_live_authenticated_context` em modo histórico:
+o turno antigo não comprova o contexto autenticado atual. Isso também vale para
+`rastreamento_sem_identificadores`, cujo novo gabarito consulta a conta sem pedir
+número ou e-mail, preservando o ID 25 apenas como procedência da pergunta.
 
 Os casos não seguem uma sequência entre si. Em `live`, cada caso começa somente
 com seu campo `history` (vazio para perguntas independentes). Quando uma pergunta
@@ -53,14 +64,37 @@ O replay oferece as **mesmas 11 ferramentas do atendimento**, diretamente de
 - `lookup_postal_code`, `calculate_shipping`, `register_complaint`.
 
 Todas aparecem no manifest, e todos os resultados entram na captura de evidências.
-As ferramentas usam o banco configurado; `register_complaint` pode gravar uma
-reclamação se for chamada com dados válidos. Para avaliar cenários de escrita,
-configure uma cópia isolada do banco. Os turnos de benchmark não são gravados como
-conversas. O modo histórico somente lê as chamadas já realizadas.
+As ferramentas usam o banco configurado. A implementação real de
+`register_complaint` executa dentro de uma transação externa com savepoint,
+revertida após capturar cada resultado: as reclamações do benchmark não permanecem
+no banco. O protocolo retornado é somente evidência dessa execução isolada;
+idempotência entre chamadas não é avaliada por esse wrapper. Os turnos não são
+gravados como conversas. O modo histórico somente lê as chamadas já realizadas.
 
-As 31 perguntas não representam cobertura funcional de todas as 11 ferramentas:
-faltam, por exemplo, casos completos de reembolso, pagamento e reclamação. Ainda
-assim, todas ficam disponíveis para medir também escolhas desnecessárias de tools.
+O conjunto revisado exige cada uma das 11 ferramentas em pelo menos um plano.
+Isso é cobertura de seleção, não prova de cobertura funcional completa. O manifest
+e o relatório guardam `tool_coverage`, inclusive ferramentas não exigidas por
+nenhum dos casos selecionados. Nomes desconhecidos no dataset são rejeitados antes
+da execução. Os schemas registrados são os visíveis ao modelo: `request_id` da
+reclamação é injetado pelo middleware e não é um argumento obrigatório da LLM.
+
+### Contrato de tools por caso
+
+- `expected_tools`: tools obrigatórias do caminho padrão, quando não há planos.
+- `optional_tools`: consultas complementares permitidas, não obrigatórias.
+- `tool_plans`: caminhos alternativos, cada um com nome, `required_tools`,
+  `optional_tools` próprias e `ordered` (padrão falso).
+- `forbidden_tools`: chamadas explicitamente proibidas para aquele cenário.
+- `reference_calls`: uma sequência representativa para diagnósticos do Ragas;
+  não é mais tratada como a única forma válida de resolver a pergunta.
+
+Por exemplo, buscar baterias e depois consultar detalhes de um modelo é válido,
+assim como refazer uma busca mais ampla. Na consulta de promoções, tanto a tool de
+campanhas quanto uma consulta de catálogo que retorne ofertas podem ser caminhos
+válidos. Já localizar um pedido e calcular seu reembolso requer as duas tools, na
+ordem correta; a política pode ser consultada em diferentes pontos do fluxo.
+Cada plano deve ser justificado pelo cenário; não se permite indiscriminadamente
+qualquer uma das 11 tools em todos os casos.
 
 ## Métricas
 
@@ -70,9 +104,13 @@ assim, todas ficam disponíveis para medir também escolhas desnecessárias de t
 | Fundamentação | Ragas `Faithfulness` | Pergunta, resposta e contextos efetivamente expostos |
 | Relevância da resposta | Ragas `AnswerRelevancy` | Pergunta, resposta e embeddings das perguntas geradas |
 | Correção factual adicional | Ragas `FactualCorrectness` | Resposta e referência revisada, quando disponível |
-| Chamadas de tools | Ragas `ToolCallAccuracy`, ordem flexível | Chamadas do turno e chamadas de referência |
-| Chamadas exatas | Ragas `ToolCallF1` | Conjuntos de nomes e argumentos exatos |
-| Consulta às tools necessárias | `required_tool_recall`, determinístico | Nomes esperados e nomes chamados no turno |
+| Plano de tools | `tool_plan_success`, `tool_plan_f1` | Melhor caminho admissível, obrigatórias/opcionais e ordem quando exigida |
+| Cobertura das obrigatórias | `required_tool_recall` | Tools necessárias do plano escolhido versus chamadas |
+| Precisão da seleção | `allowed_tool_precision` | Tools permitidas versus chamadas, sem penalizar complementares válidas |
+| Contratos dos argumentos | `tool_schema_validity` | Todas as chamadas versus schemas públicos do registro real |
+| Execução das tools | `tool_execution_success` | Pareamento por ID, resultado JSON e erros operacionais |
+| Diagnóstico de referência | Ragas `ToolCallAccuracy`, ordem flexível | Uma sequência de referência, marcada `diagnostic` |
+| Diagnóstico exato | Ragas `ToolCallF1` | Igualdade exata de nomes/argumentos, marcada `diagnostic` |
 
 As três primeiras formam a **RAG Triad**. Contextos incluem trechos do manual e
 resultados das ferramentas. Os relatórios guardam separadamente passagens,
@@ -87,15 +125,28 @@ cobertura, não uma aprovação. O relatório mostra média, quantidade avaliada
 quantidade pulada e erros para cada métrica. `--no-judge` não avalia a tríade.
 
 **Limites das métricas de tools:** consultas equivalentes podem ter argumentos
-diferentes. F1 exato é um diagnóstico estrito, não o critério único de sucesso.
+diferentes. O F1 exato e a accuracy do Ragas ficam como diagnósticos, não gates.
 No Ragas 0.4.3, `ToolCallAccuracy` verifica as chaves de referência, mas ignora
 argumentos extras: `query=bateria, category=instrumentos musicais` pode receber
 accuracy 1 mesmo estando incorreto. `ToolCallF1` detecta essa diferença, enquanto
 recall dos nomes revela que a ferramenta certa foi chamada. Nenhuma dessas
-métricas, isoladamente, comprova uso correto do resultado. Nos casos em que nenhuma
-chamada é esperada (por exemplo, uma saudação sem consulta comercial),
-F1 fica `skipped: no_expected_calls`; `ToolCallAccuracy` e o recall de nomes
-avaliam a ausência correta ou a presença indevida de chamadas.
+métricas, isoladamente, comprova uso correto do resultado. O plano mede nomes e
+ordem, não equivalência semântica de argumentos; a validação de schema detecta
+tipos/campos inválidos, mas não prova que uma categoria ou ID válido seja o certo.
+Oracles, checks de evidência e avaliação factual continuam necessários.
+
+Consultas repetidas à mesma tool não são penalizadas apenas por repetir o nome.
+Resultados `not_found` podem ser corretos; `unavailable`, `invalid_input`,
+`request_conflict`, erros de tool e resultados ausentes/duplicados são falhas de
+execução. Se nenhuma chamada ocorrer, contrato e execução ficam `skipped:
+no_tool_calls`, sem inflar a média com sucesso fictício. A ausência correta de
+chamadas é avaliada pelo plano (por exemplo, na saudação). `ToolCallF1` continua
+`skipped: no_expected_calls` quando não há sequência de referência.
+
+Seleção, schema e execução devem ser lidos em conjunto: um plano pode estar
+correto mesmo com falha do provedor ou argumentos inválidos, e isso aparece nas
+métricas separadas. A versão `admissible-plans-v1` é registrada; suas notas não
+devem ser comparadas diretamente com relatórios anteriores sem reavaliá-los.
 
 Há checks objetivos adicionais: prazo/marco inicial, referência a seção de ajuda,
 pedido de cidade, seção recuperada, apresentação de um modelo disponível e opção
@@ -113,7 +164,7 @@ Com `.env`, banco acessível e migrations aplicadas:
 # Diagnóstico histórico local: tools e checks, sem chamadas ao avaliador
 uv run python -m app.benchmarks --mode historical --no-judge
 
-# Avaliar os 28 casos com origem histórica; os três novos ficam marcados como skipped
+# Avaliar fontes históricas compatíveis; casos novos/autenticados ficam skipped
 uv run python -m app.benchmarks --mode historical
 
 # Conversas novas com o agente, tools e índice atuais
@@ -126,8 +177,11 @@ uv run python -m app.benchmarks --mode live \
   --metric-timeout 90 --output benchmark-results
 ```
 
-`GOOGLE_API_KEY` habilita o avaliador Gemini pela API compatível com OpenAI,
-os embeddings usados em `AnswerRelevancy` e o agente no modo `live`. O avaliador
+`GOOGLE_API_KEY` habilita o avaliador Gemini pela API compatível com OpenAI e
+os embeddings usados em `AnswerRelevancy`. O agente `live` usa a chave do seu
+`CHAT_PRIMARY_MODEL` (por padrão, `OPENROUTER_API_KEY` para DeepSeek). Casos
+autenticados exigem as contas provisionadas conforme [Autenticação](autenticacao.md).
+O avaliador
 é separado do modelo do atendimento; pode ser selecionado com `--judge-model`.
 O padrão é `gemini-2.5-flash`, temperatura 0, até 16.384 tokens, timeout de 90s por
 métrica. O limite comporta também tokens de raciocínio; saída truncada é erro,
@@ -161,6 +215,9 @@ Cada execução cria `benchmark-results/<timestamp>-<uuid>/`, ignorado pelo Git:
 - `partial.json`: último conjunto de resultados concluídos, atualizado por caso.
 - `report.json`: resultado final, médias com denominadores, checks e detalhes por
   caso, histórico público, modelo efetivo/fallback, uso de tokens e latência.
+  As métricas exatas do Ragas são identificadas como diagnósticas também no resumo;
+  cada caso inclui seu contrato e o plano selecionado, tools faltantes, inesperadas
+  ou proibidas, violações de schema e falhas de execução, sem expor valores inválidos.
 
 Em `live`, cada consulta de política guarda query, limite final, modo `vector`
 ou `text_fallback`, candidatos, passagens e latência. Em `historical`, o modo
