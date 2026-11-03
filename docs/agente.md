@@ -17,7 +17,7 @@ LiteLLM e tools estruturadas. O RAG continua separado, atrás da tool `search_po
 | `app/agents/runner.py` | Agente padrão, fallback, limites e idempotência das reclamações |
 | `app/agents/prompt.py` | Instruções de atendimento em português |
 
-O lifespan da API prepara `app.state.chat_service` com as onze tools, sem chamar
+O lifespan da API prepara `app.state.chat_service` com as doze tools, sem chamar
 provedores. Sem a chave do provedor primário, o serviço retorna `unavailable`; isso permite
 inicializar e testar a aplicação sem inventar respostas de atendimento.
 
@@ -55,10 +55,10 @@ Para referências a hoje/agora e expediente atual, o agente dispõe de
 `get_current_datetime`, sem parâmetros, no fuso `America/Campo_Grande` (atualmente
 UTC−4, uma hora atrás de Brasília). A tool usa o relógio do servidor convertido por
 `zoneinfo`, sem API externa, banco ou dependência do fuso local do container.
-Não consulta feriados ou horários especiais. O agente deve combinar o instante
-atual com as políticas recuperadas e apresentar o expediente regular como tal
-quando essas exceções não estiverem confirmadas, sem garantir abertura ou retorno
-humano em uma data/hora específica.
+O agente combina a data local, `check_holiday` (feriados nacionais/MS via `holidays`,
+offline) e as políticas recuperadas. Feriados municipais, pontos facultativos e
+horários especiais não são verificados; ausência de feriado no calendário não
+confirma abertura nem extensão na Black Friday. Não há promessa de retorno humano.
 
 ## Configuração
 

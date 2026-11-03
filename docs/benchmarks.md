@@ -6,9 +6,8 @@ dependências do projeto; a integração usa a API `ragas.metrics.collections`.
 
 ## Dataset baseado no banco
 
-`app/benchmarks/cases.json` contém 38 casos: os 31 anteriores (28 derivados dos
-56 turnos revisados do banco e três cenários novos) e sete cenários sintéticos
-adicionais para avaliar as 11 tools e fluxos com múltiplas chamadas. O caso de
+`app/benchmarks/cases.json` mantém 38 casos, na versão `2026-11-02.6`: os 31
+anteriores e sete cenários sintéticos para fluxos com múltiplas chamadas. O caso de
 violão de sete cordas substitui o de eletroacústico exemplificado nas instruções;
 seu gabarito consulta somente modelos de sete cordas. Esse exemplo não é incluído
 no prompt nem nas descrições das ferramentas. Cada caso registra origem, pergunta,
@@ -55,10 +54,10 @@ em `live` e marcados `skipped: no_historical_source` em `historical`, sem invent
 uma conversa de origem. O caso de violão acústico aceita modelos eletroacústicos
 disponíveis, que devem ser identificados como instrumentos com captação.
 
-O replay oferece as **mesmas 11 ferramentas do atendimento**, diretamente de
+O replay oferece as **mesmas 12 ferramentas do atendimento**, diretamente de
 `build_tools`, com schemas, descrições e implementações reais:
 
-- `search_policy`, `get_current_datetime`;
+- `search_policy`, `get_current_datetime`, `check_holiday`;
 - `search_products`, `get_product_details`, `get_active_promotions`;
 - `get_order_status`, `calculate_refund`, `calculate_payment`;
 - `lookup_postal_code`, `calculate_shipping`, `register_complaint`.
@@ -71,7 +70,8 @@ no banco. O protocolo retornado é somente evidência dessa execução isolada;
 idempotência entre chamadas não é avaliada por esse wrapper. Os turnos não são
 gravados como conversas. O modo histórico somente lê as chamadas já realizadas.
 
-O conjunto revisado exige cada uma das 11 ferramentas em pelo menos um plano.
+Os planos exigem 11 das 12 ferramentas; `check_holiday` não tem cobertura obrigatória
+no dataset atual e pode aparecer como chamada inesperada nos planos de horários.
 Isso é cobertura de seleção, não prova de cobertura funcional completa. O manifest
 e o relatório guardam `tool_coverage`, inclusive ferramentas não exigidas por
 nenhum dos casos selecionados. Nomes desconhecidos no dataset são rejeitados antes
@@ -94,7 +94,7 @@ campanhas quanto uma consulta de catálogo que retorne ofertas podem ser caminho
 válidos. Já localizar um pedido e calcular seu reembolso requer as duas tools, na
 ordem correta; a política pode ser consultada em diferentes pontos do fluxo.
 Cada plano deve ser justificado pelo cenário; não se permite indiscriminadamente
-qualquer uma das 11 tools em todos os casos.
+qualquer uma das tools em todos os casos.
 
 ## Métricas
 
@@ -335,7 +335,7 @@ exporte históricos completos de clientes indiscriminadamente. Analytics do Raga
 
 ## Resultados registrados
 
-A [linha de base atual](benchmark-baseline-rag-vetorial.md) usa 38 casos e avaliador MiMo.
+A [linha de base registrada](benchmark-baseline-rag-vetorial.md) usa 38 casos e avaliador MiMo.
 Veja também as comparações com [busca híbrida](resultados-busca-hibrida.md) e
 [top-k 10](benchmark-comparacao-top-k.md). O padrão permanece vetorial com top-k 5.
 
@@ -345,7 +345,7 @@ Execução histórica `20261102T134941Z-523dcf83`, dez casos, avaliador
 `gemini-2.5-flash`, sem falhas de métricas:
 
 Esse baseline corresponde à versão inicial de dez perguntas e ao replay com cinco
-tools. Novas execuções usam o dataset de 38 perguntas e as 11 tools, conforme o manifest;
+tools. Novas execuções usam o dataset de 38 perguntas e as 12 tools, conforme o manifest;
 as médias não devem ser comparadas diretamente sem igualar casos e configuração.
 
 | Métrica | Média | Avaliados / pulados |

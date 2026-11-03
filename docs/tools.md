@@ -31,6 +31,7 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
 | Tool | Casos | Comportamento |
 |---|---|---|
 | `get_current_datetime` | 1, referências temporais | Data/hora atual, dia da semana e fuso da loja, sem consultar feriados ou expediente |
+| `check_holiday` | 1, datas específicas | Feriados nacionais e de MS via `holidays`, offline, sem municipais ou horários especiais |
 | `search_products` | 2 | Nome, categoria, marca no nome, preço atual e disponibilidade; paginação limitada |
 | `get_product_details` | 2, 4 | Preços, estoque, specs e alternativas disponíveis da mesma categoria |
 | `get_active_promotions` | 4 | Campanhas ativas e consulta opcional de inativas, sem inventar vigência |
@@ -49,9 +50,14 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
   Retorna data/hora local e UTC em ISO 8601, dia da semana, offset e indicador de
   horário de verão. O offset atual é UTC−4; regras históricas vêm do `zoneinfo`,
   com `tzdata` como base de fusos disponível para ambientes sem dados do sistema.
-  A tool funciona sem banco ou chaves. Não informa `is_open`: feriados e horários
-  especiais não são verificados, e `holiday_calendar_available=false` explicita isso.
-  Os horários regulares devem ser consultados por `search_policy`.
+  Funciona sem banco ou chaves. `holiday_calendar_available=true` indica a tool
+  dedicada disponível; `holidays_checked=false` explicita que o relógio não a executa.
+  Não informa `is_open`; o expediente vem de `search_policy`.
+- `check_holiday` recebe `target_date` em `YYYY-MM-DD` (1996–2100, intervalo com
+  suporte estadual na biblioteca). Usa `holidays` com BR/MS, categoria `PUBLIC`,
+  sem transferir datas ou incluir pontos facultativos. Retorna `is_holiday`, nome,
+  data e limites de cobertura. Não consulta municípios nem anúncios da loja.
+  Para hoje/agora, use a data local do relógio; resultado negativo não confirma abertura.
 - Schemas ficam em `app/schemas/`, separados por domínio, com descrições em português,
   campos extras proibidos, limites de resultados, quantidades e tamanhos de texto.
 - Serviços recebem objetos Pydantic validados; as tools aceitam argumentos JSON.
@@ -152,7 +158,7 @@ de casos ou nos CSVs.
 ## Verificação
 
 ```bash
-uv run pytest tests/test_tools_contracts.py
+uv run pytest tests/test_tools_contracts.py tests/test_clock.py tests/test_calendar.py
 TEST_DATABASE_URL=postgresql+psycopg://usuario:senha@localhost:5432/emporio_test uv run pytest
 ```
 

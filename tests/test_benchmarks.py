@@ -176,7 +176,7 @@ def test_correct_greeting_needs_no_tools_and_f1_is_not_misreported_as_zero():
 
 
 @pytest.mark.parametrize("tool_name", [t.name for t in build_tools(sessionmaker())])
-def test_all_eleven_tool_results_are_captured(tool_name):
+def test_all_tool_results_are_captured(tool_name):
     payload = (
         {"passages": [{"title": "Política", "text": "Regra", "section": "2"}]}
         if tool_name == "search_policy"
@@ -190,7 +190,7 @@ def test_all_eleven_tool_results_are_captured(tool_name):
     assert result["contexts"]
 
 
-def test_live_runner_exposes_same_eleven_tools_as_attendance(tmp_path, monkeypatch):
+def test_live_runner_exposes_same_tools_as_attendance(tmp_path, monkeypatch):
     import app.benchmarks.runner as runner
 
     received = []
@@ -222,7 +222,7 @@ def test_live_runner_exposes_same_eleven_tools_as_attendance(tmp_path, monkeypat
         )
     )
     expected = {t.name for t in build_tools(sessionmaker())}
-    assert len(received) == 11
+    assert len(received) == 12
     assert set(received) == expected
     manifest = json.loads((directory / "manifest.json").read_text())
     assert {t["function"]["name"] for t in manifest["tools"]} == expected
@@ -473,11 +473,12 @@ def tool_transcript(calls, *, failed=None):
     return messages
 
 
-def test_dataset_requires_each_of_the_eleven_tools_in_at_least_one_plan():
+def test_dataset_reports_holiday_tool_without_required_coverage():
     available = {tool.name for tool in build_tools(sessionmaker())}
     coverage = load_dataset().tool_coverage(available)
-    assert len(coverage["available"]) == 11
-    assert coverage["not_required_by_any_case"] == []
+    assert len(coverage["available"]) == 12
+    assert len(coverage["required_in_some_plan"]) == 11
+    assert coverage["not_required_by_any_case"] == ["check_holiday"]
     assert case("rastreamento_sem_identificadores").auth_customer_id == 3
     assert case("rastreamento_sem_identificadores").expected_tools == ["get_order_status"]
 
@@ -537,7 +538,7 @@ def test_order_is_checked_only_for_plans_that_require_it():
 def test_schema_validation_uses_all_public_tools_and_not_private_injected_arguments():
     definitions = model_tool_definitions(build_tools(sessionmaker()))
     schemas = {d["function"]["name"]: d["function"]["parameters"] for d in definitions}
-    assert len(schemas) == 11
+    assert len(schemas) == 12
     assert "request_id" not in schemas["register_complaint"]["properties"]
     result = tool_contract_metrics(
         case("simulacao_pix"),
