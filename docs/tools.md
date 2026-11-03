@@ -9,12 +9,12 @@ consultas e transações ficam em `app/services/`, sem depender de LLM.
 ```python
 from app.config import Settings
 from app.database import create_database_engine, create_session_factory
-from app.rag.retrieval import LlamaIndexPolicyRetriever
+from app.rag.retrieval import build_policy_retriever
 from app.tools import build_tools
 
 settings = Settings()
 engine = create_database_engine(settings)
-retriever = LlamaIndexPolicyRetriever(engine, settings)
+retriever = build_policy_retriever(engine, settings)
 tools = build_tools(create_session_factory(engine), policy_retriever=retriever)
 catalog = next(tool for tool in tools if tool.name == "search_products")
 result = catalog.invoke({"category": "violões", "max_price": "1000.00"})
@@ -77,13 +77,11 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
   tarifa. Taxas, limites, modalidades e prazos não são duplicados no código: para
   a região local, o agente consulta `search_policy` e usa o manual vigente.
 - `calculate_shipping` aceita cidade/UF em `destination_city`/`destination_state`
-  sem exigir CEP, ou `destination_postal_code`, com ou sem hífen. Consulta
-  o ViaCEP; Campo Grande/MS é local e outro estado é externo. Outras cidades de MS
-   sem cobertura confirmada seguem para verificação com funcionário; não há lista de
-   cobertura metropolitana. A classificação não é um parâmetro de entrada da tool.
-   Só pede cidade/UF quando faltarem.
-   Não expõe ferramentas ou parâmetros nas respostas. CEP inexistente interrompe a consulta,
-   e o endereço consultado pelo CEP tem precedência sobre a cidade informada.
+  sem exigir CEP; sem CEP, ambos devem ser informados juntos. Com
+  `destination_postal_code`, com ou sem hífen, consulta o ViaCEP.
+  Campo Grande/MS é local; outros destinos exigem verificação com funcionário,
+  sem lista de cobertura metropolitana. Sem destino, retorna `requires_information`.
+  CEP inexistente interrompe a consulta; o endereço do CEP tem precedência sobre a cidade.
 - Fora da região metropolitana, o atendimento informa que verificará o valor com
   um funcionário e avisará ao cliente depois. Não lista modalidades/prazos fixos,
   não exige peso/dimensões e não promete prazo de retorno. A tool retorna
@@ -121,9 +119,8 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
   `payment_verified`, `eligibility_checked`, `refund_approved` e `refund_executed`
   permanecem falsas. A operação não altera pedidos, estoque ou registros financeiros.
 - Reclamações exigem e-mail e relato. Pedido é opcional e, quando informado,
-  precisa pertencer ao cliente autenticado e corresponder ao e-mail. O chamador deve gerar uma `request_id` UUID
-  por solicitação e reutilizá-la nos retries. O agente não deve solicitar essa
-  chave ao cliente; a integração futura deve fornecer e preservar esse contexto.
+  precisa pertencer ao cliente autenticado e corresponder ao e-mail. O chamador gera uma `request_id` UUID
+  por solicitação e reutilizá-la nos retries. O agente não solicita essa chave ao cliente.
   A mesma chave com dados diferentes retorna `request_conflict` sem alterar o registro.
   Na integração do agente, o campo técnico é ocultado do modelo e o middleware
   deriva a chave do `ChatRequest.request_id`, preservando-a em retries do turno.
@@ -133,7 +130,7 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
   credenciais ou valores pessoais. Erros de argumentos do LangChain recebem
   mensagem genérica; o agente deve corrigir a entrada antes de tentar novamente.
 
-## Políticas e próximos passos
+## Políticas
 
 `build_tools(sessions, policy_retriever=...)` aceita um objeto que implemente
 `PolicyRetriever.search(query, limit)`. Cada `PolicyPassage` contém `text`, `source`,

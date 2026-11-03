@@ -10,7 +10,7 @@ LiteLLM e tools estruturadas. O RAG continua separado, atrás da tool `search_po
 | `app/schemas/chat.py` | Entrada e resposta pública |
 | `app/services/chat.py` | Fachada, contrato do agente e validação do histórico |
 | `app/models/conversation.py` | Conversas por UUID e turnos completos em JSON |
-| `app/routes/chat.py` | Endpoint HTTP público `POST /chat` |
+| `app/routes/chat.py` | Chat e listagem de conversas autenticados |
 | `app/ui.py` | Interface Gradio, estado visual e retries |
 | `app/agents/factory.py` | Composição das dependências |
 | `app/agents/models.py` | Adaptador `langchain-litellm`, configuração e classificação de falhas |
@@ -74,8 +74,7 @@ humano em uma data/hora específica.
 | `CHAT_MAX_TOOL_CALLS` | `12` | Execuções de tools por turno |
 | `CHAT_HISTORY_MAX_MESSAGES` | `100` | Limite do histórico de entrada |
 
-Os identificadores acima refletem as decisões do projeto; a disponibilidade e o
-comportamento dos modelos ainda precisam ser conferidos com os provedores reais.
+O primário foi avaliado com provedores reais; veja a [linha de base](benchmark-baseline-rag-vetorial.md).
 As chaves são carregadas como segredos em `Settings`, sem exportá-las globalmente.
 Chaves vazias são normalizadas para ausência. Modelos `openrouter/` usam a chave
 OpenRouter; modelos Gemini usam a chave Google, tanto no primário quanto no fallback.
@@ -110,6 +109,7 @@ uv run python -m app.agents "Quais as condições no PIX?" --conversation-id UUI
 
 Reutilize ambos os IDs e o mesmo texto em retries. Sem chaves de modelo, o turno
 também é salvo, com resposta `unavailable`.
+O CLI não autentica clientes: atende catálogo e políticas, mas não autoriza consultas de pedidos.
 
 A imagem define `LITELLM_LOCAL_MODEL_COST_MAP=True` para usar o catálogo de custos
 empacotado no LiteLLM, sem atualização remota durante a importação. Na execução
@@ -122,7 +122,7 @@ Isso não interfere nas chamadas de inferência aos provedores quando configurad
 from app.agents.factory import build_chat_service
 from app.config import Settings
 from app.database import create_database_engine, create_session_factory
-from app.rag.retrieval import LlamaIndexPolicyRetriever
+from app.rag.retrieval import build_policy_retriever
 from app.schemas.chat import ChatRequest
 from app.tools import build_tools
 
@@ -130,7 +130,7 @@ settings = Settings()
 engine = create_database_engine(settings)
 try:
     sessions = create_session_factory(engine)
-    tools = build_tools(sessions, LlamaIndexPolicyRetriever(engine, settings))
+    tools = build_tools(sessions, build_policy_retriever(engine, settings))
     service = build_chat_service(settings, tools, session_factory=sessions)
     first = service.chat(ChatRequest(message="Quero um violão Yamaha"))
     second = service.chat(
@@ -208,7 +208,7 @@ sem chamar modelo ou tools novamente. Texto diferente com a mesma chave é rejei
 Isso também vale para turnos salvos com `unavailable` ou `limit_reached`; uma nova
 tentativa de atendimento exige outro `request_id`.
 
-## Validação offline e próximos passos
+## Validação
 
 ```bash
 uv run pytest tests/test_chat_agent.py
@@ -220,7 +220,6 @@ ciclo real do `create_agent`, schemas, fallback, pares de tools, preservação d
 assinaturas, limites, isolamento entre turnos e idempotência. Com PostgreSQL,
 também exercitam catálogo, pagamento e gravação real de reclamações pelo agente.
 
-Essa validação não mede seleção semântica das tools, aderência real ao prompt ou
-qualidade das respostas. Com as chaves disponíveis, será necessário avaliar esses
-comportamentos e o RAG. Autenticação e retomada visual de conversas anteriores
-permanecem como próximas etapas.
+Os testes offline não medem qualidade semântica. A avaliação com modelos reais,
+RAG Triad e planos de tools está em [Benchmarks](benchmarks.md).
+Autenticação e retomada visual estão implementadas; encaminhamento humano continua pendente.
