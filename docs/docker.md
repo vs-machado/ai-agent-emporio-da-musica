@@ -9,6 +9,9 @@ Preencha também `AUTH_JWT_SECRET` com um segredo aleatório de pelo menos 32
 caracteres. Veja [Autenticação](autenticacao.md) para gerar o segredo e preparar
 as contas de demonstração. Defina `DEMO_PASSWORD` (10 a 128 caracteres) para a
 senha inicial dessas contas. Use `AUTH_COOKIE_SECURE=true` com HTTPS.
+Atrás de proxy reverso, defina também `FORWARDED_ALLOW_IPS` com o IP ou CIDR
+confiável do proxy para que o Uvicorn reconheça a origem HTTPS. Veja
+[Autenticação](autenticacao.md#https-atrás-do-coolify-ou-de-outro-proxy).
 `CHAT_FALLBACK_MODEL` fica vazio por padrão: não há fallback automático.
 Para habilitá-lo, informe um modelo diferente do primário e a chave de seu provedor.
 
