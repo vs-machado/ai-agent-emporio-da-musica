@@ -17,7 +17,7 @@ O bot deve responder a perguntas sobre endereço, telefone, e-mail, canais de at
 - Segunda a sexta-feira: 09:00 às 18:00.
 - Sábado: 09:00 às 13:00.
 - Domingo e feriados: fechado.
-- Para abertura agora, combinar relógio e política. Sem confirmação de feriados/horários especiais, informar o expediente regular, sem garantir abertura ou data exata de retorno.
+- Para abertura agora, combinar relógio, `check_holiday` (nacionais/MS) e política. Sem cobertura municipal ou confirmação de horários especiais, apresentar o expediente regular sem garantir abertura ou data exata de retorno.
 - O manual (seção 2, página 2) prevê possível extensão do horário em Black Friday, aniversário da loja e Natal, anunciada previamente nas redes sociais e no WhatsApp. Não fornece horários específicos nem calendário de feriados.
 
 ## 2. Busca E Recomendação De Instrumentos

@@ -2,6 +2,7 @@
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from uuid import uuid4, uuid5
 
 import httpx
@@ -26,6 +27,7 @@ from app.schemas.orders import ComplaintRegistration
 from app.schemas.policies import PolicyPassage
 from app.services.auth import Principal
 from app.services.chat import ChatService
+from app.services.clock import ClockService
 from app.tools import build_tools
 from app.tools.registry import service_tool
 
@@ -969,10 +971,15 @@ def test_api_startup_prepares_unconfigured_chat_service_without_network(monkeypa
     with TestClient(app):
         assert app.state.chat_service.agent is None
         assert app.state.chat_service.session_factory is app.state.session_factory
-        assert len(app.state.tools) == 11
+        assert len(app.state.tools) == 12
 
 
-def test_agent_can_combine_current_store_time_and_policy_without_api_keys(settings):
+def test_agent_combines_local_date_holiday_and_policy_without_api_keys(settings, monkeypatch):
+    monkeypatch.setattr(
+        "app.tools.registry.ClockService",
+        lambda: ClockService(lambda: datetime(2026, 11, 2, 14, tzinfo=UTC)),
+    )
+
     class PolicyRetriever:
         def search(self, query, limit):
             return [
@@ -990,8 +997,9 @@ def test_agent_can_combine_current_store_time_and_policy_without_api_keys(settin
     model = ScriptedModel(
         responses=[
             call("get_current_datetime", {}),
+            call("check_holiday", {"target_date": "2026-11-02"}, call_id="holiday"),
             call("search_policy", {"query": "Horário de funcionamento"}, call_id="hours"),
-            AIMessage(content="Consultei o horário local e o expediente regular da loja."),
+            AIMessage(content="Hoje é Finados e a loja está fechada por ser feriado."),
         ]
     )
     tools = build_tools(sessionmaker(), PolicyRetriever())
@@ -1000,10 +1008,15 @@ def test_agent_can_combine_current_store_time_and_policy_without_api_keys(settin
     )
     results = [json.loads(m.content) for m in turn.messages if isinstance(m, ToolMessage)]
     assert results[0]["timezone"] == "America/Campo_Grande"
-    assert results[0]["holiday_calendar_available"] is False
-    assert results[1]["passages"][0]["section"] == "2"
+    assert results[0]["date"] == results[1]["date"] == "2026-11-02"
+    assert results[0]["holiday_calendar_available"] is True
+    assert results[0]["holidays_checked"] is False
+    assert results[1]["is_holiday"] is True
+    assert results[1]["holiday_name"] == "Finados"
+    assert results[2]["passages"][0]["section"] == "2"
     assert [action.name for action in turn.response.actions] == [
         "get_current_datetime",
+        "check_holiday",
         "search_policy",
     ]
     assert turn.response.status == "ok"

@@ -21,6 +21,7 @@ def test_tools_expose_schemas_for_tool_calling():
     tools = build_tools(sessionmaker())
     assert {tool.name for tool in tools} == {
         "get_current_datetime",
+        "check_holiday",
         "search_products",
         "get_product_details",
         "get_active_promotions",
