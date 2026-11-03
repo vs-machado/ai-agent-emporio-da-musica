@@ -173,19 +173,36 @@ uv run python -m app.benchmarks --mode live
 # Seleção de casos e parâmetros do avaliador
 uv run python -m app.benchmarks --mode live \
   --case horario_sabado --case bateria_contextual \
-  --judge-model gemini-2.5-flash --judge-max-tokens 16384 \
+  --judge-model xiaomi/mimo-v2.6-flash --judge-max-tokens 16384 \
   --metric-timeout 90 --output benchmark-results
 ```
 
-`GOOGLE_API_KEY` habilita o avaliador Gemini pela API compatível com OpenAI e
-os embeddings usados em `AnswerRelevancy`. O agente `live` usa a chave do seu
+O avaliador padrão é **MiMo-V2.6-Flash via OpenRouter**, usando
+`OPENROUTER_API_KEY`. `GOOGLE_API_KEY` continua necessária para os embeddings
+da busca vetorial e de `AnswerRelevancy`; não é usada pelo avaliador padrão.
+O agente `live` usa a chave do seu
 `CHAT_PRIMARY_MODEL` (por padrão, `OPENROUTER_API_KEY` para DeepSeek). Casos
 autenticados exigem as contas provisionadas conforme [Autenticação](autenticacao.md).
 O avaliador
-é separado do modelo do atendimento; pode ser selecionado com `--judge-model`.
-O padrão é `gemini-2.5-flash`, temperatura 0, até 16.384 tokens, timeout de 90s por
+é separado do modelo do atendimento; pode ser selecionado com `--judge-model`
+(ID do catálogo do provedor, por exemplo `xiaomi/mimo-v2.6-flash`, sem prefixo
+`openrouter/`). `--judge-provider openrouter|google` seleciona endpoint e chave;
+o padrão Google, quando escolhido explicitamente, é `gemini-2.5-flash`.
+Modelo, provedor, endpoint e provedor de embeddings ficam registrados nos relatórios.
+O padrão é `xiaomi/mimo-v2.6-flash`, temperatura 0, até 16.384 tokens, timeout de 90s por
 métrica. O limite comporta também tokens de raciocínio; saída truncada é erro,
 não nota zero. Uma execução chama o provedor várias vezes por caso.
+
+Exemplo de seleção explícita do avaliador anterior:
+
+```bash
+uv run python -m app.benchmarks --mode live \
+  --judge-provider google --judge-model gemini-2.5-flash
+```
+
+Mantenha o mesmo modelo/provedor de avaliação ao comparar retrieval atual e
+híbrido. Notas de MiMo e Gemini não são diretamente intercambiáveis; a execução
+parcial anterior com Gemini permanece preservada como diagnóstico.
 
 `CHAT_*` e `RAG_*` seguem `Settings`. Por exemplo, para comparar top-k:
 
