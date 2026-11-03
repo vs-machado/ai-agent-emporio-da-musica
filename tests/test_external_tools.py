@@ -165,12 +165,11 @@ def test_shipping_does_not_calculate_for_unknown_postal_code(engine):
     [
         ("Dourados", "MS", "requires_quote"),
         ("Outra Cidade", "MS", "requires_quote"),
-        ("Outra Cidade", None, "requires_quote"),
         ("campo grande", "MS", "requires_policy"),
         ("Campo Grande", "AL", "requires_quote"),
     ],
 )
-def test_shipping_accepts_city_without_postal_code_or_customer_classification(
+def test_shipping_accepts_city_and_state_without_postal_code_or_customer_classification(
     engine, city, state, status
 ):
     ingest(engine)

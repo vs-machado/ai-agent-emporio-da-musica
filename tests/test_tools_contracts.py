@@ -81,11 +81,23 @@ def test_payment_rejects_invalid_cart(payload):
 
 @pytest.mark.parametrize(
     "destination",
-    [{"destination_city": "Campo Grande"}, {"destination_state": "MS"}],
+    [
+        {"destination_city": "Campo Grande"},
+        {"destination_state": "MS"},
+        {"destination_city": "Outra Cidade", "destination_state": None},
+    ],
 )
 def test_shipping_rejects_incomplete_city_state_without_postal_code(destination):
     with pytest.raises(ValidationError, match="destination_city e destination_state juntos"):
         ShippingQuote.model_validate({"items": [{"product_id": 118}], **destination})
+
+    def unexpected_session():
+        pytest.fail("Destino incompleto deve ser rejeitado antes de consultar o banco")
+
+    tool = next(t for t in build_tools(unexpected_session) if t.name == "calculate_shipping")
+    response = tool.invoke({"items": [{"product_id": 118}], **destination})
+    assert "Parâmetros inválidos" in response
+    assert "Outra Cidade" not in response
 
 
 @pytest.mark.parametrize(
