@@ -5,7 +5,7 @@ O projeto usa Ruff para lint e formatação de código Python, com Python 3.12 c
 Após clonar o repositório, instale as dependências e ative os hooks locais:
 
 ```bash
-uv sync
+uv sync --locked
 uv run pre-commit install
 ```
 
@@ -19,9 +19,8 @@ uv run pre-commit run --all-files
 
 ## Versões das dependências
 
-As dependências diretas e de desenvolvimento em `pyproject.toml` têm como limite inferior
-as versões do ambiente validado e um limite superior exclusivo: a próxima versão major
-para bibliotecas a partir de 1.0 e a próxima versão minor para bibliotecas 0.x.
+As dependências em `pyproject.toml` têm limites inferiores e superiores explícitos,
+por major ou minor conforme a biblioteca. Python aceita versões de 3.12 até antes da 3.14.
 A restrição de `langchain-community<0.4` preserva a compatibilidade atual com Ragas.
 Esses intervalos reduzem atualizações incompatíveis, mas não garantem compatibilidade
 de todas as versões permitidas.

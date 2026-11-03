@@ -1,6 +1,6 @@
 # Casos Cobertos Pelo Assistente
 
-Este documento traduz o Manual de Políticas e Procedimentos da Empório da Música em cenários que o assistente virtual deve atender. As regras abaixo são uma referência funcional; o manual em `kb/políticas_da_loja.pdf` é a fonte de verdade.
+Cenários do atendimento, com adaptações e limitações do protótipo indicadas abaixo. O manual em `kb/políticas_da_loja.pdf` é a fonte de verdade para políticas.
 
 ## Regras Gerais De Atendimento
 
@@ -17,8 +17,8 @@ O bot deve responder a perguntas sobre endereço, telefone, e-mail, canais de at
 - Segunda a sexta-feira: 09:00 às 18:00.
 - Sábado: 09:00 às 13:00.
 - Domingo e feriados: fechado.
-- Fora do expediente, informar que o atendimento será retomado no próximo horário de funcionamento.
-- Informar que horários especiais em campanhas como Black Friday, aniversário da loja e Natal são comunicados pelos canais oficiais.
+- Para abertura agora, combinar relógio e política. Sem confirmação de feriados/horários especiais, informar o expediente regular, sem garantir abertura ou data exata de retorno.
+- O manual (seção 2, página 2) prevê possível extensão do horário em Black Friday, aniversário da loja e Natal, anunciada previamente nas redes sociais e no WhatsApp. Não fornece horários específicos nem calendário de feriados.
 
 ## 2. Busca E Recomendação De Instrumentos
 
@@ -27,7 +27,7 @@ O bot deve identificar a necessidade do cliente, buscar instrumentos no catálog
 - Consultar catálogo, preço e disponibilidade antes de confirmar qualquer informação comercial.
 - Permitir filtros por tipo de instrumento, marca, faixa de preço e disponibilidade quando os dados permitirem.
 - Quando um produto estiver sem estoque, informar a indisponibilidade temporária e sugerir alternativas semelhantes disponíveis.
-- Quando um produto estiver descontinuado, informar o fato e sugerir modelos equivalentes ou sucessores.
+- Quando um produto estiver descontinuado, informar o fato e sugerir alternativas consultadas da mesma categoria, sem garantir equivalência ou sucessão.
 - Para acessórios, explicar educadamente que a loja não vende cordas, palhetas, cabos, cases, pedais, amplificadores ou outros acessórios. Quando possível, sugerir lojas parceiras, sem inventar indicações.
 
 ## 3. Preços, Pagamento E Parcelamento
@@ -51,7 +51,7 @@ O bot deve consultar promoções ativas antes de oferecer ou confirmar descontos
 - Informar preço original, percentual de desconto e preço promocional.
 - Explicar que promoções não são cumulativas e não recebem o desconto de PIX.
 - Confirmar disponibilidade de estoque, pois não há reserva de preço para produtos esgotados durante uma campanha.
-- Se uma promoção estiver vencida, informar com transparência e apresentar o preço atual; nunca prometer o desconto expirado.
+- Para campanhas inativas, informar o estado registrado e consultar o preço atual; a fonte não contém datas para afirmar quando expiraram.
 - Responder sobre campanhas recorrentes, como Aniversário da Loja, Black Friday, Volta às Aulas, Queima de Estoque e Semana do Músico, sem assumir que estejam ativas.
 
 ## 5. Frete, Entrega E Rastreamento
@@ -60,9 +60,7 @@ O bot deve explicar modalidades de entrega e consultar pedidos para rastreamento
 
 - Na região metropolitana de Campo Grande, informar frete grátis em pedidos acima de R$ 500,00 e taxa fixa de R$ 35,00 abaixo desse valor.
 - Informar o prazo estimado de 1 a 3 dias úteis na região metropolitana e que a entrega é feita por motoboy próprio, com contato telefônico prévio.
-- Para outras cidades, explicar as modalidades PAC, SEDEX e Jadlog e que o valor depende de CEP, peso e dimensões.
-- Informar os prazos estimados: PAC de 5 a 12 dias úteis, SEDEX de 2 a 5 dias úteis e Jadlog de 3 a 8 dias úteis.
-- Alertar que instrumentos de grande porte podem exigir cotação individual de frete.
+- Para destinos externos ou cobertura incerta, orientar verificação do valor com funcionário, sem oferecer modalidades/prazos fixos nem exigir peso ou dimensões. Não há contato ou retorno automático.
 - Consultar o pedido antes de informar status ou código de rastreamento.
 - Explicar que o rastreio é enviado por e-mail e WhatsApp após o despacho.
 - Em caso de avaria na entrega, orientar o cliente a recusar o recebimento e entrar em contato imediatamente com a loja.
@@ -91,12 +89,12 @@ O bot deve explicar a garantia e orientar o cliente sobre os limites de cobertur
 
 ## 8. Reclamações E Encaminhamento Humano
 
-O bot deve tratar reclamações com empatia e encaminhá-las para atendimento humano.
+O bot acolhe e registra reclamações; o encaminhamento humano ainda não está integrado.
 
 - Ouvir e registrar o relato do cliente sem atribuir culpa ou prometer uma solução não confirmada.
 - Coletar dados mínimos necessários para identificar o caso e o pedido, quando houver.
-- Informar encaminhamento ao responsável e prazo de retorno de até 24 horas úteis.
-- Encaminhar para a equipe situações ambíguas, exceções à política, solicitações que exijam ação humana ou casos que não possam ser confirmados pelos dados disponíveis.
+- Informar o protocolo salvo e a ausência de envio à equipe. O prazo de 24 horas úteis do manual não é garantido pelo protótipo.
+- Para ambiguidades, exceções e ações humanas, orientar contato pelos canais oficiais, sem afirmar encaminhamento concluído.
 
 ## 9. Privacidade E Dados Pessoais
 

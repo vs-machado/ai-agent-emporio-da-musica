@@ -1,6 +1,6 @@
 # Backend e banco de dados com Docker
 
-O Docker Compose disponibiliza a API FastAPI e PostgreSQL 16 com pgvector instalado e um volume persistente para desenvolvimento local. A extensão será habilitada no banco pela primeira migration Alembic, antes da criação de tabelas vetoriais. São necessários Docker e Docker Compose.
+O Docker Compose disponibiliza a API FastAPI e PostgreSQL 16 com pgvector e volume persistente. A primeira migration Alembic habilita a extensão antes de criar as tabelas vetoriais. São necessários Docker e Docker Compose.
 
 Copie a configuração de exemplo, preencha `OPENROUTER_API_KEY` para o atendimento
 DeepSeek e `GOOGLE_API_KEY` para a indexação e os embeddings das políticas no `.env`.
@@ -21,7 +21,7 @@ docker compose up -d --build --wait
 docker compose ps -a
 ```
 
-As credenciais no exemplo são apenas para desenvolvimento local. O arquivo `.env` não é versionado, e a porta do banco é exposta somente em `127.0.0.1`. Para conectar pelo host, use a porta configurada em `POSTGRES_PORT`.
+As credenciais no exemplo são para desenvolvimento local. O `.env` não é versionado; as portas da API e do banco são expostas em `127.0.0.1`. Para conectar pelo host, use `API_PORT` e `POSTGRES_PORT`.
 
 O Compose executa a preparação automaticamente, nesta ordem:
 
@@ -58,10 +58,10 @@ uv sync --locked
 uv run alembic upgrade head
 uv run python -m app.ingestion
 uv run python -m app.rag
-uv run uvicorn app.main:app --reload
+LITELLM_LOCAL_MODEL_COST_MAP=True uv run uvicorn app.main:app --reload
 ```
 
-Nesse caso, `POSTGRES_HOST` e `POSTGRES_PORT` do `.env` configuram a conexão local. Para acompanhar os logs no Docker, use `docker compose logs -f api`. Após alterar código ou dependências, execute novamente `docker compose up -d --build --wait`.
+Nesse caso, `POSTGRES_HOST` e `POSTGRES_PORT` do `.env` configuram a conexão local. Para demonstrar pedidos, execute também o [seed de contas](autenticacao.md#contas-para-demonstrar-pedidos-existentes). Para acompanhar os logs no Docker, use `docker compose logs -f api`. Após alterar código ou dependências, execute novamente `docker compose up -d --build --wait`.
 
 A execução completa de `docker compose up` pode executar novamente os serviços de preparação, inclusive após um `down`. A ingestão reaplica os valores dos CSVs, sobrescrevendo alterações nos registros de origem. Para reiniciar apenas a API, use `docker compose restart api`, que não executa a carga novamente.
 
