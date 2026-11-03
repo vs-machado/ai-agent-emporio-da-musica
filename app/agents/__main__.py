@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.agents.factory import build_chat_service
 from app.config import Settings
 from app.database import create_database_engine, create_session_factory
-from app.rag.retrieval import LlamaIndexPolicyRetriever
+from app.rag.retrieval import build_policy_retriever
 from app.schemas.chat import ChatRequest
 from app.tools import build_tools
 
@@ -31,7 +31,7 @@ def main() -> int:
         engine = create_database_engine(settings)
         try:
             session_factory = create_session_factory(engine)
-            tools = build_tools(session_factory, LlamaIndexPolicyRetriever(engine, settings))
+            tools = build_tools(session_factory, build_policy_retriever(engine, settings))
             result = build_chat_service(settings, tools, session_factory=session_factory).chat(
                 request
             )
