@@ -109,11 +109,11 @@ flowchart TD
 
 | Escolha | Justificativa |
 |---|---|
-| **LangChain + tool calling** | Orquestra consultas por ferramentas com schemas definidos, mantendo SQL, autorização e cálculos fora da LLM |
+| **LangChain + tool calling e RAG** | Orquestra consultas por ferramentas com schemas definidos e acessa as políticas por RAG com chunking estrutural (structure-aware), busca vetorial e fallback textual, mantendo SQL, autorização e cálculos fora da LLM |
 | **DeepSeek via OpenRouter / LiteLLM** | Melhor comportamento observado no catálogo e nas ferramentas durante o desenvolvimento, com custo competitivo e acesso desacoplado do provedor |
 | **FastAPI + Gradio** | API e interface de chat em Python, compartilhando o mesmo serviço de atendimento, sem frontend separado |
 | **PostgreSQL, SQLAlchemy e Alembic** | Persistência transacional de dados, contas e conversas, com schema versionado |
-| **LlamaIndex + pgvector** | Recuperação das políticas com evidências e metadados, usando o mesmo banco dos dados operacionais |
+| **LlamaIndex + pgvector** | Implementa o RAG com chunks por seção/subseção, busca vetorial por similaridade de cosseno e fallback para busca textual PostgreSQL em caso de falha vetorial, preservando evidências e metadados |
 
 **Dados e ingestão.** Os seis CSVs de `agent-data/` são validados antes de uma
 carga transacional com upsert: tipos, valores monetários, status, JSON e
