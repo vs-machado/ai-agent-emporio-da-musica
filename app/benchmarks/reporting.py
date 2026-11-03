@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.prompt import SYSTEM_PROMPT
+from app.benchmarks.usage import run_token_usage
 from app.models import PolicyIndex
 from app.rag.indexing import processing_config
 
@@ -37,7 +38,9 @@ def redact(value):
     return value
 
 
-def snapshot(engine, settings):
+def snapshot(engine, settings, retriever):
+    retrieval = retriever.metadata()
+    retrieval_json = json.dumps(retrieval, sort_keys=True, ensure_ascii=False, allow_nan=False)
     with Session(engine) as session:
         index = session.scalar(select(PolicyIndex).where(PolicyIndex.is_active))
         active = (
@@ -75,10 +78,12 @@ def snapshot(engine, settings):
                 "app/agents/runner.py",
                 "app/rag/parser.py",
                 "app/rag/retrieval.py",
+                "app/rag/embeddings.py",
                 "app/services/catalog.py",
                 "app/benchmarks/metrics.py",
                 "app/benchmarks/runner.py",
                 "app/benchmarks/dataset.py",
+                "app/benchmarks/usage.py",
                 "app/tools/registry.py",
                 "app/services/orders.py",
                 "app/schemas/orders.py",
@@ -89,12 +94,10 @@ def snapshot(engine, settings):
             "chunk_overlap_tokens": 0,
             "configured_indexing": processing_config(settings),
             "active_index": active,
-            "top_k": settings.rag_top_k,
-            "context_tokens": settings.rag_context_tokens,
             "policy_tool_default_limit": 5,
             "policy_tool_max_limit": 5,
-            "retrieval": "cosine vector; PostgreSQL portuguese FTS fallback on vector error",
-            "expansion": "subseção completa se couber no orçamento; deduplicação estrutural",
+            "retrieval": json.loads(retrieval_json),
+            "retrieval_sha256": hashlib.sha256(retrieval_json.encode()).hexdigest(),
         },
         "agent": {
             name: getattr(settings, name)
@@ -180,6 +183,13 @@ class RunLog:
             "status": status,
             "finished_at": datetime.now(UTC).isoformat(),
             "case_count": len(results),
+            "mode": self.manifest.get("mode"),
+            "configuration": self.manifest.get("configuration"),
+            "configuration_scope": self.manifest.get("configuration_scope"),
+            "dataset_sha256": self.manifest.get("dataset_sha256"),
+            "selected_cases": self.manifest.get("selected_cases"),
+            "judge": self.manifest.get("judge"),
+            "token_usage": run_token_usage(results),
             "summary": summary,
             "tool_coverage": self.manifest.get("tool_coverage"),
             "tool_evaluation_version": self.manifest.get("tool_evaluation_version"),
