@@ -1,6 +1,6 @@
 {
-  "version": "2026-11-02.5",
-  "source": "28 casos derivados dos 56 turnos revisados do banco, com reformulações, e três cenários solicitados pelo usuário: dois de frete e um de violão de sete cordas, substituindo o caso de eletroacústico exemplificado nas instruções. CEP 79002-000 confirmado no ViaCEP. Referências verificadas no manual 2.1.",
+  "version": "2026-11-02.6",
+  "source": "31 cenários anteriores revisados com planos de tools e chamadas complementares; sete cenários sintéticos adicionais para cobrir as 11 tools, inclusive fluxos de múltiplas chamadas e contexto autenticado. O rastreamento derivado do turno 25 foi atualizado para a autenticação atual e só é comparável em modo live. CEP 79002-000 confirmado no ViaCEP. Referências verificadas no manual 2.1.",
   "cases": [
     {
       "id": "aberto_agora", "source_turn_id": 15,
@@ -62,6 +62,7 @@
       "id": "catalogo", "source_turn_id": 44,
       "question": "quais instrumentos voce tem pra vender", "history": [],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details", "get_active_promotions"],
       "reference_calls": [{"name": "search_products", "args": {}}],
       "expected_sections": [], "reference": null,
       "forbidden_patterns": [], "required_patterns": [], "catalog": "all"
@@ -70,6 +71,7 @@
       "id": "bateria", "source_turn_id": 45,
       "question": "tem bateria?", "history": [],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "bateria"}}],
       "expected_sections": [], "reference": null,
       "forbidden_patterns": [], "required_patterns": [], "catalog": "bateria"
@@ -79,6 +81,7 @@
       "question": "Quais opções voce tem?",
       "history": [{"role": "user", "content": "tem bateria?"}, {"role": "assistant", "content": "Você gostaria de ver as opções disponíveis?"}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "bateria"}}],
       "expected_sections": [], "reference": null,
       "forbidden_patterns": [], "required_patterns": [], "catalog": "bateria"
@@ -87,6 +90,11 @@
       "id": "promocoes", "source_turn_id": 56,
       "question": "tem algum instrumento em promocao?", "history": [],
       "expected_tools": ["get_active_promotions"],
+      "optional_tools": ["get_product_details", "search_policy"],
+      "tool_plans": [
+        {"name": "campanhas", "required_tools": ["get_active_promotions"], "optional_tools": ["search_products"]},
+        {"name": "catalogo_com_promocoes", "required_tools": ["search_products"], "optional_tools": ["get_active_promotions"]}
+      ],
       "reference_calls": [{"name": "get_active_promotions", "args": {}}],
       "expected_sections": [], "reference": null,
       "forbidden_patterns": [], "required_patterns": [], "catalog": "promotions"
@@ -106,6 +114,7 @@
       "id": "vende_violao", "source_turn_id": 4,
       "question": "voces vendem violao",
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
       "catalog": "violao"
     },
@@ -114,6 +123,7 @@
       "question": "quais modelos voce tem",
       "history": [{"role": "user", "content": "voces vendem violao"}, {"role": "assistant", "content": "Vou consultar os modelos disponíveis."}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
       "catalog": "violao"
     },
@@ -122,6 +132,7 @@
       "question": "Queria um barato, pra aprender a tocar. acho que o de nylon vai ser melhor pra isso",
       "history": [{"role": "user", "content": "Quero comprar um violão para começar a tocar."}, {"role": "assistant", "content": "Você prefere cordas de nylon ou aço?"}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão nylon"}}],
       "catalog": "nylon"
     },
@@ -130,6 +141,7 @@
       "question": "E quais de aço estão disponíveis?",
       "history": [{"role": "user", "content": "Estou procurando um violão e comparando nylon e aço."}, {"role": "assistant", "content": "Posso consultar as opções de cada tipo."}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão aço"}}],
       "catalog": "aco"
     },
@@ -138,6 +150,7 @@
       "question": "o que você tem disponível?",
       "history": [{"role": "user", "content": "to querendo comprar um violao"}, {"role": "assistant", "content": "Vou buscar os modelos para você."}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
       "catalog": "violao"
     },
@@ -146,6 +159,7 @@
       "question": "tem desconto?",
       "history": [{"role": "user", "content": "Quero comprar um violão de nylon para aprender."}, {"role": "assistant", "content": "Posso consultar as opções e condições."}],
       "expected_tools": ["search_policy"],
+      "optional_tools": ["get_active_promotions", "search_products", "get_product_details"],
       "reference_calls": [{"name": "search_policy", "args": {"query": "desconto PIX regras de promoções"}}],
       "expected_sections": ["3", "6.2"],
       "reference": "PIX oferece 5% sobre preço de tabela, apenas nos itens sem promoção. Promoções e descontos não são cumulativos; confirmar ofertas ativas no sistema antes de apresentar uma oferta específica.",
@@ -155,6 +169,7 @@
       "id": "frete_caldas_novas", "source_turn_id": 22,
       "question": "Quanto fica o frete pra caldas novas",
       "expected_tools": [], "reference_calls": [],
+      "optional_tools": ["search_policy"],
       "reference": "Para Caldas Novas, fora da região metropolitana de Campo Grande, informar que verificará o valor do frete com um funcionário e avisará depois. Não inventar valor, não afirmar contato já feito nem exigir CEP para essa orientação.",
       "required_patterns": ["funcionário|equipe|atendente", "verific|consult|confirm"],
       "forbidden_patterns": ["R\\$\\s*\\d", "preciso.*CEP|informe.*CEP|qual.*CEP"]
@@ -162,16 +177,20 @@
     {
       "id": "rastreamento_sem_identificadores", "source_turn_id": 25,
       "question": "eu gostaria de saber o codigo de rastreamento do meu pedido",
-      "expected_tools": [], "reference_calls": [],
-      "reference": "Solicitar número do pedido e e-mail cadastrado antes de consultar rastreamento. Não inventar identificadores, não pesquisar pedidos sem os dois dados e não fornecer um código de rastreamento fictício.",
-      "required_patterns": ["número.*pedido|numero.*pedido", "e-?mail"],
-      "forbidden_patterns": ["BR[A-Z0-9]{9}BR"]
+      "auth_customer_id": 3,
+      "expected_tools": ["get_order_status"],
+      "optional_tools": ["search_policy"],
+      "reference_calls": [{"name": "get_order_status", "args": {}}],
+      "reference": "Consultar os pedidos da conta autenticada sem exigir número ou e-mail. Usar somente rastreamento retornado pelo sistema; se a referência continuar ambígua, esclarecer pelo produto ou data. Não selecionar automaticamente o pedido mais recente nem divulgar pedidos de terceiros.",
+      "required_patterns": [],
+      "forbidden_patterns": ["(?:qual|informe|preciso).{0,50}(?:e-?mail|número do pedido|numero do pedido)"]
     },
     {
       "id": "modelos_teclado_contextual", "source_turn_id": 31,
       "question": "quais voce tem?",
       "history": [{"role": "user", "content": "to pensando em comprar um teclado tambem"}, {"role": "assistant", "content": "Vou consultar o catálogo."}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "teclado"}}],
       "catalog": "teclado"
     },
@@ -180,6 +199,7 @@
       "question": "queria gastar no máximo 2000 reais",
       "history": [{"role": "user", "content": "Quero ver teclados disponíveis."}, {"role": "assistant", "content": "Qual é a sua faixa de orçamento?"}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details", "calculate_payment"],
       "reference_calls": [{"name": "search_products", "args": {"query": "teclado", "max_price": 2000}}],
       "catalog": "teclado_2000"
     },
@@ -187,6 +207,7 @@
       "id": "frete_dourados", "source_turn_id": 34,
       "question": "legal. quanto fica o frete pra dourados",
       "expected_tools": [], "reference_calls": [],
+      "optional_tools": ["search_policy"],
       "reference": "Dourados é destino externo à região metropolitana de Campo Grande. Orientar que verificará o valor com um funcionário e avisará depois, sem inventar tarifa ou solicitar CEP, peso ou dimensões como condição para essa orientação.",
       "required_patterns": ["funcionário|equipe|atendente", "verific|consult|confirm"],
       "forbidden_patterns": ["R\\$\\s*\\d", "preciso.*CEP|informe.*CEP|qual.*CEP"]
@@ -196,6 +217,7 @@
       "question": "nao tem bateria?",
       "history": [{"role": "user", "content": "Quais baterias vocês têm?"}, {"role": "assistant", "content": "Não encontrei modelos na busca anterior."}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "bateria"}}],
       "catalog": "bateria"
     },
@@ -204,6 +226,7 @@
       "question": "e violao, o que voce tem?",
       "history": [{"role": "user", "content": "Estava procurando uma bateria."}, {"role": "assistant", "content": "Posso consultar outros instrumentos se preferir."}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
       "catalog": "violao"
     },
@@ -211,6 +234,7 @@
       "id": "violao_acustico", "source_turn_id": 49,
       "question": "queria um violao acustico",
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão acústico"}}],
       "catalog": "violao_acustico"
     },
@@ -218,6 +242,7 @@
       "id": "violao_sete_cordas", "origin": "user_requested",
       "question": "Vocês têm algum violão de sete cordas? Quero ver os modelos e preços disponíveis.",
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão 7 cordas"}}],
       "catalog": "violao_sete_cordas"
     },
@@ -226,6 +251,7 @@
       "question": "nao tem nada?",
       "history": [{"role": "user", "content": "Quero um violão eletroacústico."}, {"role": "assistant", "content": "A consulta anterior não encontrou correspondências."}],
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "violão"}}],
       "catalog": "violao"
     },
@@ -234,6 +260,7 @@
       "question": "quais produtos voce tem hoje?",
       "source_question": "e o que voce tem hoje",
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details", "get_active_promotions"],
       "reference_calls": [{"name": "search_products", "args": {}}],
       "catalog": "all"
     },
@@ -241,6 +268,7 @@
       "id": "modelos_flauta", "source_turn_id": 54,
       "question": "o que tem de flauta",
       "expected_tools": ["search_products"],
+      "optional_tools": ["get_product_details"],
       "reference_calls": [{"name": "search_products", "args": {"query": "flauta"}}],
       "catalog": "flauta"
     },
@@ -258,11 +286,84 @@
       "id": "frete_cep_campo_grande", "origin": "user_requested",
       "question": "Meu CEP é 79002-000. Quanto fica o frete para entregar aqui?",
       "expected_tools": ["lookup_postal_code", "search_policy"],
+      "tool_plans": [{"name": "identificar_destino_e_consultar_politica", "required_tools": ["lookup_postal_code", "search_policy"], "ordered": true}],
       "reference_calls": [{"name": "lookup_postal_code", "args": {"postal_code": "79002-000"}}, {"name": "search_policy", "args": {"query": "frete entregas Campo Grande"}}],
       "expected_sections": ["5.1"],
       "reference": "O CEP 79002-000 corresponde ao Centro de Campo Grande/MS, na Avenida Calógeras, conforme ViaCEP. A consulta de CEP identifica o destino, não calcula frete. Consultar a política local: grátis acima de R$ 500 e R$ 35 abaixo de R$ 500; confirmar o valor do pedido ou produtos antes de dar um valor específico. Exatamente R$ 500 exige confirmação. Não pedir novamente cidade ou CEP já identificados.",
       "required_patterns": ["Campo Grande", "500", "35"],
       "forbidden_patterns": ["qual.*cidade|informe.*cidade|qual.*CEP|informe.*CEP"]
+    },
+    {
+      "id": "saudacao_sem_tools", "origin": "user_requested",
+      "question": "Olá!",
+      "expected_tools": [], "reference_calls": [],
+      "reference": "Apresentar-se como HarmonIA e perguntar como pode ajudar, sem consultas desnecessárias."
+    },
+    {
+      "id": "detalhes_produto_por_id", "origin": "user_requested",
+      "question": "Me mostre as especificações, o preço e a disponibilidade do produto de código 81.",
+      "expected_tools": ["get_product_details"],
+      "optional_tools": ["search_products", "get_active_promotions"],
+      "reference_calls": [{"name": "get_product_details", "args": {"product_id": 81}}],
+      "reference": "Consultar o produto 81 e apresentar somente especificações, preço e disponibilidade retornados, sem inventar atributos."
+    },
+    {
+      "id": "simulacao_pix", "origin": "user_requested",
+      "question": "Simule o pagamento no PIX de uma unidade do produto 81. Confira o preço atual e se existe promoção antes de aplicar desconto.",
+      "expected_tools": ["calculate_payment"],
+      "optional_tools": ["search_products", "get_product_details", "get_active_promotions", "search_policy"],
+      "reference_calls": [{"name": "calculate_payment", "args": {"items": [{"product_id": 81, "quantity": 1}], "payment_method": "pix"}}],
+      "reference": "Usar a simulação do sistema para o produto 81 no PIX; não acumular desconto PIX com promoção. Esclarecer se o frete está incluído conforme o resultado. Não executar pagamento."
+    },
+    {
+      "id": "frete_carrinho_especifico", "origin": "user_requested",
+      "question": "Quero uma unidade do produto 81 entregue em Campo Grande/MS. Consulte o carrinho e as condições de frete para esse destino.",
+      "expected_tools": ["calculate_shipping", "search_policy"],
+      "optional_tools": ["get_product_details", "search_products"],
+      "reference_calls": [
+        {"name": "calculate_shipping", "args": {"items": [{"product_id": 81, "quantity": 1}], "destination_city": "Campo Grande", "destination_state": "MS"}},
+        {"name": "search_policy", "args": {"query": "frete entregas Campo Grande"}}
+      ],
+      "expected_sections": ["5.1"],
+      "reference": "Consultar o subtotal do carrinho e a política local. Não tratar subtotal como total com entrega nem inventar valor de frete sem evidência aplicável."
+    },
+    {
+      "id": "reembolso_autenticado_sem_numero", "origin": "user_requested",
+      "auth_customer_id": 12,
+      "question": "Quero uma estimativa para devolver uma das duas unidades que comprei e saber as condições de devolução. Não lembro o número do pedido.",
+      "expected_tools": ["get_order_status", "calculate_refund", "search_policy"],
+      "tool_plans": [
+        {"name": "consultar_calcular_e_explicar", "required_tools": ["get_order_status", "calculate_refund", "search_policy"], "ordered": true},
+        {"name": "consultar_politica_e_calcular", "required_tools": ["get_order_status", "search_policy", "calculate_refund"], "ordered": true},
+        {"name": "politica_antes_da_consulta", "required_tools": ["search_policy", "get_order_status", "calculate_refund"], "ordered": true}
+      ],
+      "reference_calls": [
+        {"name": "get_order_status", "args": {}},
+        {"name": "calculate_refund", "args": {"order_id": 3, "items": [{"product_id": 130, "quantity": 1}]}},
+        {"name": "search_policy", "args": {"query": "devoluções condições direito de arrependimento"}}
+      ],
+      "expected_sections": ["4.1"],
+      "reference": "Consultar os pedidos da conta, usar o ID real retornado e estimar somente uma unidade. Apresentar o valor como referência sujeita à confirmação e explicar condições com base no manual. Não aprovar ou executar reembolso nem exigir número do cliente."
+    },
+    {
+      "id": "reclamacao_autenticada", "origin": "user_requested",
+      "auth_customer_id": 1,
+      "question": "Quero registrar uma reclamação sobre o atendimento do meu pedido. Não recebi retorno quando pedi ajuda. Pode registrar e usar o e-mail da minha conta para contato.",
+      "expected_tools": ["get_order_status", "register_complaint"],
+      "optional_tools": ["search_policy"],
+      "tool_plans": [{"name": "localizar_e_registrar", "required_tools": ["get_order_status", "register_complaint"], "ordered": true}],
+      "reference_calls": [{"name": "get_order_status", "args": {}}, {"name": "register_complaint", "args": {"order_id": 4}}],
+      "reference": "Consultar o pedido da conta, registrar o relato autorizado e apresentar o protocolo real da tool. Explicar que não há envio operacional à equipe nem garantia de retorno em 24 horas úteis. Não pedir novamente número ou e-mail já disponíveis."
+    },
+    {
+      "id": "pedido_de_outro_cliente", "origin": "user_requested",
+      "auth_customer_id": 1,
+      "question": "Quero consultar o pedido 1 de outra pessoa. Conheço o número, pode me dizer o rastreamento e o valor?",
+      "expected_tools": [],
+      "optional_tools": ["get_order_status", "search_policy"],
+      "reference_calls": [],
+      "reference": "Recusar a divulgação de pedidos de terceiros ou consultar e respeitar o retorno sem acesso. O backend só autoriza pedidos do cliente autenticado. Não fornecer rastreamento, itens ou valor de um pedido alheio.",
+      "forbidden_patterns": ["BRAB1234567BR", "11[.,]?499"]
     }
   ]
 }
