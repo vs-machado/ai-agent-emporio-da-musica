@@ -40,7 +40,7 @@ Para consultar o manual, prepare também o índice conforme [RAG das políticas]
 | `calculate_shipping` | 5 | Consulta carrinho/destino; orienta consultar o manual local ou verificar o frete com funcionário |
 | `lookup_postal_code` | 5 | Consulta ViaCEP para endereço, cidade e UF, sem chave |
 | `register_complaint` | 8, 9 | Protocolo persistente e idempotência, sem afirmar encaminhamento operacional |
-| `search_policy` | 1, 3–10 | Recuperação LlamaIndex/pgvector do manual, expansão estrutural e fallback textual |
+| `search_policy` | 1, 3–10 | Recuperação híbrida pgvector + BM25 + RRF do manual, com expansão estrutural |
 
 ## Contratos e regras
 
@@ -147,7 +147,7 @@ inventar políticas ou responder como se a consulta tivesse funcionado.
 O lifespan da API já constrói o retriever e as tools em `app.state`, sem indexar
 o PDF ou chamar provedores na inicialização. Sem índice ativo, a consulta retorna
 `unavailable`; sem chave de embeddings, um índice existente pode ser consultado
-pelo fallback textual. O agente e o `ChatService` já estão integrados; veja
+pelo BM25 (ou FTS no baseline). O agente e o `ChatService` já estão integrados; veja
 [Agente de atendimento](agente.md) e [Autenticação](autenticacao.md).
 O processo humano continua como integração futura. Não há busca baseada no documento
 de casos ou nos CSVs.

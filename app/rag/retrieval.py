@@ -1,4 +1,4 @@
-"""Retrieval LlamaIndex com expansão estrutural e fallback textual PostgreSQL."""
+"""Retrieval vetorial + BM25/RRF, com expansão estrutural e baseline FTS."""
 
 import logging
 from dataclasses import dataclass, field
@@ -9,12 +9,13 @@ from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.schema import NodeWithScore, TextNode
 from llama_index.core.vector_stores import MetadataFilter, MetadataFilters
 from llama_index.vector_stores.postgres import PGVectorStore
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, func, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.config import Settings
 from app.models import PolicyIndex, PolicySection, PolicyVector
+from app.rag.bm25 import K1, B, bm25_scores
 from app.rag.embeddings import build_embeddings
 from app.rag.parser import token_count
 from app.schemas.policies import PolicyPassage
@@ -33,6 +34,8 @@ class RetrievalResult:
 
 def build_policy_retriever(engine: Engine, settings: Settings):
     """Ponto único de seleção do retriever para atendimento, CLI e benchmark."""
+    if settings.rag_strategy == "hybrid":
+        return HybridPolicyRetriever(engine, settings)
     return LlamaIndexPolicyRetriever(engine, settings)
 
 
@@ -215,3 +218,121 @@ class LlamaIndexPolicyRetriever:
             if len(passages) == limit:
                 break
         return passages
+
+
+class HybridPolicyRetriever(LlamaIndexPolicyRetriever):
+    """Combina rankings vetorial e BM25 antes da expansão, sempre na mesma versão."""
+
+    def metadata(self) -> dict[str, Any]:
+        """Expõe parâmetros efetivos para comparação reproduzível nos benchmarks."""
+        config = super().metadata()
+        config.update(strategy="hybrid", version=1)
+        parameters = config["parameters"]
+        parameters.pop("text")
+        parameters.pop("fallback_on")
+        parameters.update(
+            bm25={
+                "engine": "in_process_bm25_okapi",
+                "tokenizer": "postgresql_ts_debug_portuguese",
+                "idf": "log1p((N-df+0.5)/(df+0.5))",
+                "k1": K1,
+                "b": B,
+                "top_k": self.settings.rag_bm25_top_k,
+                "corpus": "all_chunks_of_active_index",
+            },
+            fusion={"algorithm": "rrf", "k": self.settings.rag_rrf_k, "weights": [1, 1]},
+            degradation="surviving_branch_on_error",
+        )
+        return config
+
+    def _bm25_search(self, query: str, index: PolicyIndex) -> list[NodeWithScore]:
+        """Lê corpus ativo e preserva frequências via ts_debug para BM25 em memória.
+
+        Não reutiliza tsvector: posições podem ser truncadas e não representam uma
+        contagem ilimitada de ocorrências. Estatísticas nunca incluem versões inativas.
+        A leitura integral é deliberada para o manual pequeno; não mantém cache obsoleto.
+        """
+        statement = text(
+            "SELECT node_id, text, metadata_, "
+            "ARRAY(SELECT unnest(lexemes) FROM ts_debug('portuguese', text)) AS tokens "
+            "FROM data_policy_vectors WHERE metadata_->>'index_id' = :index_id "
+            "ORDER BY node_id"
+        )
+        with Session(self.engine) as session:
+            rows = session.execute(statement, {"index_id": str(index.index_id)}).mappings().all()
+            query_tokens = session.scalar(
+                text("SELECT ARRAY(SELECT unnest(lexemes) FROM ts_debug('portuguese', :query))"),
+                {"query": query},
+            )
+        scores = bm25_scores([row["tokens"] for row in rows], query_tokens)
+        candidates = [
+            NodeWithScore(
+                node=TextNode(id_=row["node_id"], text=row["text"], metadata=row["metadata_"]),
+                score=score,
+            )
+            for row, score in zip(rows, scores, strict=True)
+            if score > 0
+        ]
+        return sorted(candidates, key=lambda item: (-item.score, item.node_id))[
+            : self.settings.rag_bm25_top_k
+        ]
+
+    def _fuse(self, rankings: dict[str, list[NodeWithScore]]):
+        scores: dict[str, float] = {}
+        nodes: dict[str, TextNode] = {}
+        ranks: dict[str, dict[str, int]] = {}
+        for branch, candidates in rankings.items():
+            seen = set()
+            for rank, candidate in enumerate(candidates, start=1):
+                node_id = candidate.node_id
+                if node_id in seen:
+                    continue
+                seen.add(node_id)
+                nodes[node_id] = candidate.node
+                scores[node_id] = scores.get(node_id, 0.0) + 1 / (self.settings.rag_rrf_k + rank)
+                ranks.setdefault(node_id, {})[branch] = rank
+        ordered = sorted(scores, key=lambda node_id: (-scores[node_id], node_id))
+        candidates = [
+            NodeWithScore(node=nodes[node_id], score=scores[node_id]) for node_id in ordered
+        ]
+        diagnostics = [
+            {"node_id": node_id, "ranks": ranks[node_id], "rrf_score": scores[node_id]}
+            for node_id in ordered
+        ]
+        return candidates, diagnostics
+
+    def retrieve(self, query: str, limit: int = 5) -> RetrievalResult:
+        """Executa ambos os caminhos; falha de um degrada, falha dos dois indisponibiliza.
+
+        Diagnósticos registram somente nomes dos caminhos com falha, sem mensagens
+        de provedor ou credenciais. Resultado vazio de um caminho não é erro.
+        """
+        if not 1 <= limit <= 5:
+            raise ValueError("O limite de evidências deve estar entre um e cinco")
+        with Session(self.engine) as session:
+            index = session.scalar(select(PolicyIndex).where(PolicyIndex.is_active))
+            if index is None:
+                raise PolicyRetrievalError("Nenhuma versão do manual está ativa.")
+        rankings = {}
+        failed = []
+        for branch, search in (("vector", self._vector_search), ("bm25", self._bm25_search)):
+            try:
+                rankings[branch] = search(query, index)
+            except Exception:
+                logger.warning("Busca %s de políticas indisponível.", branch)
+                failed.append(branch)
+        if not rankings:
+            raise PolicyRetrievalError("Busca vetorial e BM25 indisponíveis.")
+        candidates, fusion = self._fuse(rankings)
+        mode = "hybrid" if not failed else f"{next(iter(rankings))}_fallback"
+        return RetrievalResult(
+            self._select_evidence(candidates, index, limit),
+            mode,
+            len(candidates),
+            {
+                "index_id": str(index.index_id),
+                "candidate_counts": {branch: len(items) for branch, items in rankings.items()},
+                "failed_branches": failed,
+                "fusion": fusion,
+            },
+        )

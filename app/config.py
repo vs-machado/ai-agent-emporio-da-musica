@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     rag_embedding_model: str = "gemini-embedding-001"
     rag_embedding_dimensions: Literal[768] = 768
     rag_top_k: int = Field(default=5, ge=1, le=30)
+    rag_strategy: Literal["hybrid", "vector_with_text_fallback"] = "hybrid"
+    rag_bm25_top_k: int = Field(default=10, ge=1, le=30)
+    rag_rrf_k: int = Field(default=60, ge=1, le=1000)
     rag_context_tokens: int = Field(default=2000, ge=512, le=16000)
     rag_chunk_tokens: int = Field(default=1000, ge=256, le=8000)
 

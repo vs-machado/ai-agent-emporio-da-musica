@@ -220,8 +220,9 @@ Repita execuções para avaliar variabilidade; temperatura 0 não garante determ
 ### Comparar retrieval atual e busca híbrida
 
 O atendimento, as CLIs e o benchmark constroem o retriever pela mesma fábrica:
-`app.rag.retrieval.build_policy_retriever(engine, settings)`. Uma implementação
-futura é selecionada nessa fábrica, sem alterações no benchmark nem no dataset.
+`app.rag.retrieval.build_policy_retriever(engine, settings)`. `RAG_STRATEGY=hybrid`
+seleciona vetorial + BM25 + RRF (padrão); `vector_with_text_fallback` seleciona o
+baseline anterior, sem alterações no benchmark nem no dataset.
 O retriever deve manter estes métodos:
 
 - `search(query, limit)`: retorna `list[PolicyPassage]` para a tool de políticas.
@@ -242,19 +243,20 @@ Por exemplo, um retriever híbrido pode informar:
   "version": 1,
   "parameters": {
     "vector": {"top_k": 10, "metric": "cosine"},
-    "text": {"top_k": 10, "language": "portuguese"},
-    "fusion": {"method": "rrf", "k": 60},
-    "reranker": null,
+    "bm25": {"top_k": 10, "k1": 1.2, "b": 0.75},
+    "fusion": {"algorithm": "rrf", "k": 60, "weights": [1, 1]},
     "context_tokens": 2000,
     "max_passages": 5
   }
 }
 ```
 
-A implementação atual informa `vector_with_text_fallback`, com modelo/dimensão
-de embeddings, top-k vetorial/textual, ranking textual, condição do fallback,
-orçamento de contexto, expansão, deduplicação e limite final de passagens.
-Isso continua sendo fallback em erro, não fusão híbrida.
+A implementação híbrida informa `hybrid`, com modelo/dimensão de embeddings,
+top-k vetorial e BM25, tokenizador português, k1/b/IDF do BM25 e parâmetros RRF,
+além de orçamento de contexto, expansão, deduplicação e limite final de passagens.
+Os diagnósticos por consulta registram contagens por caminho, falhas, ranks e
+scores de fusão. O baseline informa `vector_with_text_fallback` e usa `ts_rank_cd`
+somente em erro vetorial.
 
 Manifest e relatório guardam os metadados em `configuration.rag.retrieval` e seu
 hash canônico em `configuration.rag.retrieval_sha256` (ordem das chaves não altera

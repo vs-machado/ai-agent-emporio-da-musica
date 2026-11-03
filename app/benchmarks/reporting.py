@@ -78,6 +78,7 @@ def snapshot(engine, settings, retriever):
                 "app/agents/runner.py",
                 "app/rag/parser.py",
                 "app/rag/retrieval.py",
+                "app/rag/bm25.py",
                 "app/rag/embeddings.py",
                 "app/services/catalog.py",
                 "app/benchmarks/metrics.py",

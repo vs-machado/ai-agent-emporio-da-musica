@@ -51,6 +51,7 @@ def evaluate(retriever: LlamaIndexPolicyRetriever) -> dict:
                 "section_recall": len(found) / len(expected),
                 "complete": expected <= retrieved,
                 "candidate_count": result.candidate_count,
+                "diagnostics": result.diagnostics,
                 "context_tokens": sum(token_count(p.model_dump_json()) for p in result.passages),
                 "latency_seconds": round(elapsed, 3),
             }

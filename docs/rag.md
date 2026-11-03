@@ -63,7 +63,10 @@ depois reutiliza seu cache local.
 | `OPENROUTER_API_KEY` | vazia | Opcional; habilita o fallback de chat DeepSeek |
 | `RAG_EMBEDDING_MODEL` | `gemini-embedding-001` | Mesmo modelo para documentos e perguntas |
 | `RAG_EMBEDDING_DIMENSIONS` | `768` | Dimensão fixa nesta migration |
-| `RAG_TOP_K` | `5` | Candidatos antes de expansão e deduplicação |
+| `RAG_TOP_K` | `5` | Candidatos vetoriais antes da fusão/expansão |
+| `RAG_STRATEGY` | `hybrid` | Vetorial + BM25 + RRF; `vector_with_text_fallback` mantém o baseline |
+| `RAG_BM25_TOP_K` | `10` | Candidatos BM25 antes da fusão |
+| `RAG_RRF_K` | `60` | Constante da fusão RRF, com pesos iguais |
 | `RAG_CHUNK_TOKENS` | `1000` | Limite por unidade indexada, incluindo títulos |
 | `RAG_CONTEXT_TOKENS` | `2000` | Orçamento aproximado das evidências com metadados |
 
@@ -97,23 +100,42 @@ deve comportar um chunk mais uma reserva de 256 tokens para referências.
 
 ## Recuperação e integração
 
-`LlamaIndexPolicyRetriever` implementa `PolicyRetriever.search(query, limit)`:
+`build_policy_retriever` seleciona `HybridPolicyRetriever` por padrão. Ambos os
+retrievers implementam `PolicyRetriever.search(query, limit)`:
 
 1. Identifica uma versão ativa para toda a consulta.
 2. Usa `VectorStoreIndex` e `PGVectorStore` com filtro dessa versão e distância cosseno.
-3. Se o embedding ou a consulta vetorial falhar, usa full-text search PostgreSQL
-   em português, com `websearch_to_tsquery` e ordenação por `ts_rank_cd`.
-4. Expande candidatos para a subseção completa quando ela couber no orçamento.
+3. Executa também BM25 Okapi sobre todos os chunks da mesma versão, com `k1=1.2`,
+   `b=0.75` e IDF positivo `log(1 + (N - df + 0.5) / (df + 0.5))`. PostgreSQL
+   normaliza documentos e pergunta com `ts_debug('portuguese', ...)`, preservando
+   frequência dos lexemas e removendo stopwords. Qualquer termo pode contribuir;
+   não exige correspondência de todas as palavras da pergunta.
+4. Combina os top-k de cada caminho por `node_id` usando RRF:
+   `score = soma(1 / (RAG_RRF_K + posição))`, com posições iniciando em 1.
+   Desempata por `node_id`, sem somar scores vetoriais e BM25 diretamente.
+5. Expande candidatos para a subseção completa quando ela couber no orçamento.
    Se não couber, tenta o bloco original completo. Deduplica unidades cobertas e
    preserva a ordem do candidato mais bem classificado.
-5. Retorna até cinco `PolicyPassage`, com `text`, `source`, `document_version`,
+6. Retorna até cinco `PolicyPassage`, com `text`, `source`, `document_version`,
    `section`, `title`, `page_start` e `page_end`. As páginas são a localização da
    seção de origem, inclusive quando apenas um bloco dela é retornado.
 
-Sem chave ou com modelo diferente do índice ativo, a busca usa fallback textual.
-Uma consulta vetorial vazia não dispara fallback por si só. O fallback não é busca
-híbrida e pode perder cobertura com paráfrases ou termos ausentes do documento.
-Sem banco, nenhum dos caminhos funciona; a tool retorna indisponibilidade.
+Sem chave ou com modelo diferente do índice ativo, BM25 continua funcionando:
+o modo é `bm25_fallback`. Falha apenas no BM25 permite `vector_fallback`.
+Com ambos disponíveis, o modo é `hybrid`, mesmo se um retornar zero candidatos.
+Falha dos dois ou ausência de índice ativo resulta em indisponibilidade.
+Diagnósticos incluem versão consultada, contagens por caminho, caminhos com falha,
+ranks originais e score RRF de cada candidato, sem mensagens privadas de provedor.
+
+BM25 é calculado em memória a partir do corpus ativo lido a cada consulta. Não há
+cache nem serviço adicional; atualização e reativação do índice têm efeito imediato.
+Essa escolha atende o manual atual de 25 chunks. O custo cresce com todo o corpus;
+uma base grande deve usar índice BM25 persistente. Não usa `ts_rank_cd` como BM25,
+não exige migration nem regeneração dos embeddings existentes.
+
+Para o baseline, `RAG_STRATEGY=vector_with_text_fallback` mantém a implementação
+anterior: vetorial e, somente em erro, FTS PostgreSQL com `websearch_to_tsquery`
+e `ts_rank_cd`. Nesse modo, consulta vetorial vazia não dispara fallback.
 
 No manual atual, as unidades já cabem em um único chunk; a expansão normalmente
 não adiciona texto. Se unidades maiores precisarem ser divididas, ela recompõe
@@ -135,11 +157,11 @@ O comando abaixo continua sendo o diagnóstico restrito de recuperação.
 para horários, PIX/promoções, parcelamento, devoluções, trocas, frete, garantia,
 privacidade e reclamações. O relatório JSON inclui:
 
-- caminho real utilizado (`vector` ou `text_fallback`);
+- caminho real utilizado (`hybrid`, `bm25_fallback`, `vector_fallback`, ou modos do baseline);
 - seções esperadas, recuperadas e ausentes;
 - recall de seções por pergunta e médio;
 - proporção de perguntas com todas as seções esperadas;
-- quantidade de candidatos, tokens de contexto e latência.
+- quantidade de candidatos, diagnósticos de fusão, tokens de contexto e latência.
 
 O relatório mede cobertura de seções, não a qualidade das respostas geradas nem
 a presença de cada frase necessária dentro de chunks parciais. Referências,
@@ -147,6 +169,13 @@ condições e exceções ainda devem ser conferidas. Compare `RAG_TOP_K=3`, `5` 
 com o mesmo orçamento e limite final. Registre se o caminho foi vetorial ou fallback
 para não atribuir resultados textuais ao Gemini. A qualidade semântica real só
 pode ser validada após indexar e consultar com embeddings do provedor.
+
+Compare as estratégias sobre o mesmo índice:
+
+```bash
+RAG_STRATEGY=vector_with_text_fallback uv run python -m app.rag --evaluate
+RAG_STRATEGY=hybrid uv run python -m app.rag --evaluate
+```
 
 ## Testes locais
 

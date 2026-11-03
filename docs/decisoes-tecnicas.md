@@ -132,7 +132,7 @@ O LlamaIndex foi mantido para organizar a ingestão e a recuperação do manual,
 
 Para o escopo atual, com apenas um PDF curto, uma solução mais simples também seria viável: extrair o texto e disponibilizar o manual ao modelo ou recuperar seções por busca textual, sem embeddings nem banco vetorial. Portanto, a escolha do LlamaIndex com pgvector não é uma necessidade imposta pelo volume de documentos; ela prioriza demonstrar RAG e preparar a solução para uma base de conhecimento maior, ao custo de mais dependências e configuração.
 
-A primeira versão usará busca vetorial com fallback textual, com quantidade e tamanho dos trechos limitados. A recuperação será avaliada no benchmark com perguntas que exijam tanto correspondência semântica quanto regras e exceções em seções diferentes. Posteriormente, o benchmark será usado para comparar essa abordagem com busca híbrida e avaliar se combinar resultados vetoriais e textuais traz benefício relevante.
+A primeira versão usava busca vetorial com fallback textual. Agora o padrão é busca híbrida pgvector + BM25 Okapi + RRF, mantendo o baseline selecionável por `RAG_STRATEGY=vector_with_text_fallback`. BM25 calcula estatísticas sobre todos os chunks da versão ativa em memória, com normalização portuguesa no PostgreSQL, sem serviço adicional nem reindexação. A quantidade e o tamanho dos trechos continuam limitados. O benchmark compara as estratégias com perguntas que exigem correspondência semântica e regras e exceções em seções diferentes; ganho de qualidade ainda deve ser medido.
 
 ### Chunking E Recuperação De Contexto
 
@@ -166,7 +166,7 @@ O benchmark avaliará a cobertura das evidências necessárias, incluindo condi�
 
 Se o desempenho inicial não for satisfatório, serão consideradas as seguintes alternativas, conforme as falhas observadas:
 
-- **Busca híbrida:** combinar resultados vetoriais e lexicais na mesma consulta para melhorar a recuperação de termos específicos, valores e nomes. Sua adoção dependerá de ganho demonstrado sobre a busca vetorial com fallback textual.
+- **Busca híbrida (implementada):** combina resultados vetoriais e BM25 na mesma consulta com RRF. O benchmark deve medir o ganho sobre o baseline vetorial com fallback textual.
 - **Decomposição da pergunta:** realizar buscas complementares para aspectos diferentes de uma pergunta, ajudando a recuperar regras distribuídas entre seções. O ganho de cobertura deverá compensar o processamento e a latência adicionais.
 - **Reranking:** reordenar candidatos recuperados antes de selecionar as evidências finais. Essa etapa pode melhorar a precisão, mas não recupera evidências ausentes do conjunto de candidatos.
 - **Parent-child retrieval:** indexar unidades menores para busca e retornar a subseção ou seção correspondente como contexto. Será considerado se a granularidade inicial prejudicar a recuperação; a expansão deverá evitar incluir regras de outros cenários sem necessidade e não resolve, sozinha, dependências entre pais diferentes.
@@ -178,7 +178,7 @@ Se a geração de embeddings ou a consulta vetorial falhar, a tool de políticas
 
 Como a base de conhecimento atual contém apenas um documento, o manual de políticas em PDF, o eventual custo adicional de processamento ou de contexto nos casos excepcionais de indisponibilidade da API de embeddings é aceitável para preservar o atendimento. Os CSVs são dados operacionais carregados em tabelas do PostgreSQL, não documentos dessa base de conhecimento. A busca textual não exige chamadas adicionais a um provedor de embeddings nem a manutenção de um segundo índice vetorial; ela não implica necessariamente maior consumo de tokens, pois isso depende dos trechos retornados.
 
-Esse mecanismo é um fallback, não uma busca híbrida executada em todas as consultas. Caso o PostgreSQL também esteja indisponível, nenhuma das duas buscas nele funcionará; o agente deverá informar que não conseguiu consultar as políticas, sem inventar a resposta.
+O fallback FTS descrito acima permanece no baseline `vector_with_text_fallback`. No padrão `hybrid`, vetorial e BM25 executam em todas as consultas: falha de um mantém o caminho disponível; falha dos dois informa indisponibilidade. Caso o PostgreSQL esteja indisponível, nenhum caminho funciona; o agente deve informar que não conseguiu consultar as políticas, sem inventar a resposta.
 
 ## Infraestrutura E Dependências
 
