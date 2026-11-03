@@ -19,7 +19,11 @@ def main():
     parser.add_argument("--dataset", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--output", type=Path, default=Path("benchmark-results"))
     parser.add_argument("--case", action="append", dest="cases", help="ID; pode repetir")
-    parser.add_argument("--judge-model", default="gemini-2.5-flash")
+    parser.add_argument("--judge-provider", choices=("openrouter", "google"), default="openrouter")
+    parser.add_argument(
+        "--judge-model",
+        help="Padrão: xiaomi/mimo-v2.6-flash no OpenRouter; gemini-2.5-flash no Google",
+    )
     parser.add_argument("--judge-max-tokens", type=int, default=16384)
     parser.add_argument("--metric-timeout", type=float, default=90)
     parser.add_argument(
@@ -28,13 +32,29 @@ def main():
     args = parser.parse_args()
     os.environ.setdefault("RAGAS_DO_NOT_TRACK", "true")
     settings = Settings()
+    judge_model = args.judge_model or (
+        "xiaomi/mimo-v2.6-flash" if args.judge_provider == "openrouter" else "gemini-2.5-flash"
+    )
+    judge_key = (
+        settings.openrouter_api_key
+        if args.judge_provider == "openrouter"
+        else settings.google_api_key
+    )
+    judge_base_url = (
+        "https://openrouter.ai/api/v1"
+        if args.judge_provider == "openrouter"
+        else "https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
     dataset = load_dataset(args.dataset)
     if args.cases and set(args.cases) - {c.id for c in dataset.cases}:
         parser.error("ID de caso desconhecido")
     if args.metric_timeout <= 0 or args.judge_max_tokens <= 0:
         parser.error("Timeout e limite de tokens devem ser positivos")
+    if not args.no_judge and judge_key is None:
+        key_name = "OPENROUTER_API_KEY" if args.judge_provider == "openrouter" else "GOOGLE_API_KEY"
+        parser.error(f"{key_name} necessária para o avaliador {args.judge_provider}")
     if not args.no_judge and settings.google_api_key is None:
-        parser.error("GOOGLE_API_KEY necessária para o avaliador")
+        parser.error("GOOGLE_API_KEY necessária para os embeddings de AnswerRelevancy")
     primary_key = (
         settings.openrouter_api_key
         if settings.chat_primary_model.startswith("openrouter/")
@@ -55,8 +75,8 @@ def main():
 
         judge_usage = JudgeUsageRecorder()
         client = AsyncOpenAI(
-            api_key=settings.google_api_key.get_secret_value(),
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=judge_key.get_secret_value(),
+            base_url=judge_base_url,
             timeout=args.metric_timeout,
             max_retries=0,
             http_client=httpx.AsyncClient(
@@ -67,7 +87,7 @@ def main():
             ),
         )
         llm = llm_factory(
-            args.judge_model, client=client, temperature=0, max_tokens=args.judge_max_tokens
+            judge_model, client=client, temperature=0, max_tokens=args.judge_max_tokens
         )
         scorer = RagasScorer(
             llm, EvaluationEmbeddings(build_embeddings(settings)), timeout=args.metric_timeout
@@ -87,12 +107,14 @@ def main():
                 judge_usage=judge_usage,
                 judge_config={
                     "enabled": not args.no_judge,
-                    "model": args.judge_model,
-                    "provider": "google_openai_compatible",
+                    "model": judge_model,
+                    "provider": args.judge_provider,
+                    "base_url": judge_base_url,
                     "temperature": 0,
                     "max_tokens": args.judge_max_tokens,
                     "metric_timeout": args.metric_timeout,
                     "embedding_model": settings.rag_embedding_model,
+                    "embedding_provider": "google",
                     "embedding_task": "RETRIEVAL_QUERY",
                     "strict_tool_order": False,
                 },
