@@ -44,8 +44,10 @@ origem. Sem essa configuração, um POST legítimo pode retornar 403
 ## Uso
 
 1. Acesse `http://localhost:8000/`.
-2. Crie uma conta com e-mail e senha de 10 a 128 caracteres.
-3. Entre; a página encaminha para o chat Gradio.
+2. Selecione **Criar conta** e informe nome (1 a 200 caracteres), e-mail e senha
+   de 10 a 128 caracteres.
+3. Ao concluir o cadastro, a sessão é iniciada automaticamente e a página encaminha
+   para o chat Gradio. Para contas existentes, entre apenas com e-mail e senha.
 4. As conversas salvas da conta aparecem na barra lateral, inclusive em outro
    navegador após login.
 5. **Sair da conta** apaga o cookie e invalida os tokens anteriores dessa conta,
@@ -109,10 +111,11 @@ produtos e políticas. Cada conta tem seu próprio histórico.
 
 ## Contratos HTTP
 
-- `POST /auth/register`: JSON `{"email":"...","password":"..."}`; retorna 201.
-- `POST /auth/login`: mesmo JSON; define cookie `emporio_session` HttpOnly,
+- `POST /auth/register`: JSON `{"name":"...","email":"...","password":"..."}`;
+  retorna 201 e define o mesmo cookie de sessão do login, sem exigir nova entrada.
+- `POST /auth/login`: JSON `{"email":"...","password":"..."}`; define cookie `emporio_session` HttpOnly,
   SameSite=Lax, com validade de duas horas por padrão.
-- `GET /auth/me`: identidade autenticada, sem senha/hash/token.
+- `GET /auth/me`: identidade autenticada, incluindo nome, sem senha/hash/token.
 - `POST /auth/logout`: revoga tokens, apaga cookie e redireciona para `/auth`.
 - `POST /chat`: exige login; formato da mensagem preservado.
 - `GET /conversations`: mapa dos UUIDs da conta para suas mensagens públicas.
@@ -134,6 +137,9 @@ curl -b /tmp/emporio-cookies -H 'Origin: http://localhost:8000' \
 ## Implementação
 
 - SQLAlchemy/Alembic: `users` separado de `customers`; vínculo único opcional.
+  A migration `0007` acrescenta o nome e preenche contas vinculadas com o nome
+  do cliente. Contas antigas sem vínculo podem continuar com nome nulo; novos
+  cadastros exigem nome. O seed preenche nomes ausentes sem substituir os existentes.
 - `pwdlib[argon2]`: hash de senha, sem persistir a senha original.
 - `PyJWT`: HS256 fixo, emissor, audiência, expiração e versão de revogação validados.
 - FastAPI: `get_current_user` resolve a conta a partir do cookie.
@@ -146,7 +152,7 @@ curl -b /tmp/emporio-cookies -H 'Origin: http://localhost:8000' \
   contexto do turno. O runtime do LangChain transmite a identidade às tools; o
   modelo não a escolhe. E-mail é conferência opcional em consultas, nunca credencial.
   Reclamações mantêm contato obrigatório e idempotência por usuário.
-- A LLM recebe e-mail e `customer_id` autenticados em um bloco do system prompt
+- A LLM recebe nome, e-mail e `customer_id` autenticados em um bloco do system prompt
   gerado pelo backend em cada chamada, inclusive no fallback. Esses dados não vêm
   do texto do cliente e não são gravados como mensagens no histórico do diálogo.
 - `get_order_status` aceita entrada vazia: lista apenas pedidos da conta, com

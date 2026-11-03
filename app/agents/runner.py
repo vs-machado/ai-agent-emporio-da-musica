@@ -86,6 +86,7 @@ class AttendanceMiddleware(AgentMiddleware):
                 {
                     "email": context.principal.email,
                     "customer_id": context.principal.customer_id,
+                    "name": context.principal.name,
                 },
                 ensure_ascii=False,
             )
