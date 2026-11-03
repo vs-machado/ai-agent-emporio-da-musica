@@ -17,6 +17,29 @@ Para executar as mesmas verificações manualmente:
 uv run pre-commit run --all-files
 ```
 
+## Verificações locais
+
+Para desenvolvimento e testes, instale Python 3.12 e uv:
+
+```bash
+uv sync --locked
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
+```
+
+Sem `TEST_DATABASE_URL`, os testes dependentes de banco são pulados. Para executá-los,
+prepare PostgreSQL com pgvector em banco dedicado terminado em `_test`:
+
+```bash
+TEST_DATABASE_URL='postgresql+psycopg://usuario:senha@localhost:5432/emporio_test' uv run pytest
+```
+
+As fixtures aplicam migrations e limpam as tabelas desse banco. Consulte
+[Ingestão de dados](ingestao-de-dados.md#testes) para detalhes dos testes de banco.
+Os testes com modelos simulados não substituem a avaliação semântica; veja
+[Benchmarks](benchmarks.md) e os [resultados publicados](decisao-rag-e-custos.md).
+
 ## Versões das dependências
 
 As dependências em `pyproject.toml` têm limites inferiores e superiores explícitos,

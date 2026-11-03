@@ -17,6 +17,16 @@ Para habilitá-lo, informe um modelo diferente do primário e a chave de seu pro
 
 ```bash
 cp .env.example .env
+```
+
+Edite o `.env` antes de continuar, conforme a
+[configuração de ambiente no README](../README.md#clonar-e-preencher-o-ambiente).
+
+## Construir e iniciar
+
+Com as variáveis preenchidas:
+
+```bash
 docker compose up -d --build --wait
 docker compose ps -a
 ```
@@ -43,12 +53,42 @@ docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SEL
 
 Para parar o serviço sem apagar os dados, execute `docker compose down`. As credenciais do PostgreSQL são aplicadas apenas na inicialização de um volume novo; alterá-las no `.env` não modifica automaticamente um banco já inicializado.
 
-A API fica em `http://localhost:8000`, com documentação em `/docs`. O endpoint `/health` executa `SELECT 1` no banco e retorna `{"status":"ok","database":"ok"}`; se a conexão falhar, retorna HTTP 503 sem expor detalhes internos. Essa verificação não confirma se as migrations foram aplicadas; a preparação é responsabilidade dos serviços `migrate` e `ingest`.
+## Acessar
 
-A interface Gradio fica em `http://localhost:8000/ui/`, na mesma aplicação e porta.
+- **Login/cadastro:** http://localhost:8000/
+- **Chat Gradio:** http://localhost:8000/ui/
+- **Documentação da API:** http://localhost:8000/docs
+- **Healthcheck:** http://localhost:8000/health
+
+Para demonstrar pedidos existentes, entre com um e-mail importado do CSV
+`agent-data/desafio_tecnico_ai_eng - customers.csv` e a senha `DEMO_PASSWORD`
+definida no `.env`. Consulte as contas e seus pedidos com:
+
+```bash
+docker compose logs seed-users
+```
+
+A carga atual cria 49 contas para 50 clientes, pois há um e-mail duplicado.
+Esse e-mail fica vinculado ao cliente de menor ID, sem mesclar pedidos.
+Também é possível criar uma conta pela interface, inclusive na demonstração
+pública. Ela pode consultar catálogo e políticas, mas não recebe vínculo
+automático com os pedidos importados. Histórico e pedidos são restritos à conta
+autenticada. Veja [Autenticação](autenticacao.md).
+
+O endpoint `/health` executa `SELECT 1` no banco e retorna
+`{"status":"ok","database":"ok"}`; se a conexão falhar, retorna HTTP 503 sem expor
+detalhes internos. Essa verificação não confirma migrations nem disponibilidade
+dos provedores de IA; a preparação é responsabilidade dos serviços dedicados.
+
+```bash
+curl --fail http://localhost:8000/health
+```
+
 Veja [Interface de atendimento](interface-chat.md) para conversas, nova sessão e retries.
 
 `API_PORT` configura a porta da API no host. Dentro do Compose, a API usa o host `db` e a porta `5432`, independentemente de `POSTGRES_HOST` e `POSTGRES_PORT` do host.
+
+## Desenvolvimento fora do container da API
 
 Para desenvolvimento sem o container da API:
 

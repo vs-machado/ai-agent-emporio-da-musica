@@ -1,135 +1,203 @@
-# Empório da Música — agente de atendimento
+# HarmonIA — assistente da Empório da Música
 
-## Decisão atual de RAG
+Protótipo de agente de atendimento em **Python**, desenvolvido para o desafio
+técnico de AI Engineer da Artefact.
 
-**Vamos manter a busca vetorial com `top_k=5`**, com fallback textual em caso de
-erro da busca vetorial. A configuração escolhida usa até cinco passagens e
-2.000 tokens de contexto recuperado por consulta.
+O objetivo é reduzir a sobrecarga da equipe da Empório da Música, loja fictícia de
+instrumentos musicais de Campo Grande/MS, respondendo dúvidas recorrentes com base
+nos dados operacionais e nas políticas da loja. A HarmonIA combina consultas
+estruturadas e recuperação de conhecimento para oferecer respostas contextualizadas,
+mantendo explícitas as limitações do atendimento automatizado.
 
-A decisão se apoia nos experimentos com DeepSeek como agente e MiMo-V2.6-Flash
-como avaliador, com foco na **RAG Triad**:
+**[Acessar demonstração](https://emporio-da-musica.150.136.10.184.nip.io)**
 
-- Aumentar `top_k` de 5 para 10 não melhorou a relevância do contexto: 89,6%
-  em ambas as execuções.
-- A fundamentação caiu de 82,2% para 77,7%; a relevância da resposta subiu
-  de 71,4% para 73,6%, sem ganho consistente no conjunto da tríade.
-- A execução com `top_k=10` registrou mais tokens, embora parte dessa diferença
-  possa decorrer da variabilidade do agente e de buscas repetidas de catálogo.
-- A busca híbrida com BM25 e fusão RRF, sem reranker, também não mostrou ganho
-  consistente na tríade: relevância do contexto de 88,9%, fundamentação de 78,2%
-  e relevância da resposta de 72,3%. A redução de tokens observada é interessante,
-  mas não comprova benefício causado pelo BM25 isoladamente.
-- Os chunks do manual já são pequenos: o maior tem 275 tokens. Reduzir o teto
-  de 1.000 para 512 tokens não altera a segmentação; reduzir para 256 altera
-  apenas uma subseção e pode ser neutralizado pela expansão estrutural.
+> Para acessar uma conta de demonstração já cadastrada a partir da lista de
+> clientes, use o e-mail do cliente e a senha padrão **`senha12345`**.
 
-A correção factual é um diagnóstico complementar: sua nota pode refletir
-limitações nas referências e na definição do benchmark, além de possíveis erros
-reais. O foco atual da avaliação é relevância do contexto, fundamentação e
-relevância da resposta.
+## Navegação rápida
 
-Esta escolha não prova superioridade universal de `top_k=5` nem inferioridade
-geral da busca híbrida. Nesta rodada, os ganhos não foram suficientes para
-justificar a troca da configuração. Implementações experimentais podem continuar
-em branches próprias; esta seção registra a configuração escolhida para orientar
-a consolidação do projeto.
+| Assunto | Links |
+|---|---|
+| Execução | [Configurar ambiente](#executar-com-docker) · [Construir e iniciar](docs/docker.md#construir-e-iniciar) · [Acessar](docs/docker.md#acessar) · [Operação Docker](docs/docker.md) |
+| Arquitetura | [Visão geral](#arquitetura-e-decisões-técnicas) · [Decisões técnicas](docs/decisoes-tecnicas.md) · [Agente](docs/agente.md) |
+| Dados e ferramentas | [Ingestão](docs/ingestao-de-dados.md) · [RAG](docs/rag.md) · [Tools](docs/tools.md) · [Consultas externas](docs/consultas-externas.md) |
+| Interface e acesso | [Autenticação e contas demo](docs/autenticacao.md) · [API](docs/api-chat.md) · [Interface](docs/interface-chat.md) |
+| Qualidade e avaliação | [Verificações locais](docs/qualidade-de-codigo.md#verificações-locais) · [Benchmarks](docs/benchmarks.md) · [Resultados e custos](docs/decisao-rag-e-custos.md) |
+| Desenvolvimento | [Limitações e evolução](#avaliação-e-limitações) · [Uso de IA](#uso-de-ia-no-desenvolvimento) |
 
-### Comparação resumida dos três benchmarks
+## Funcionalidades
 
-Cada execução processou os mesmos 38 casos, usando DeepSeek como agente,
-MiMo-V2.6-Flash como avaliador, o mesmo dataset, prompt, índice e orçamento de
-2.000 tokens, com até cinco passagens finais. No híbrido, foram recuperados até
-cinco candidatos vetoriais e dez BM25, combinados por RRF, sem reranker.
+- Consulta de catálogo, preços, estoque e promoções.
+- Simulações de pagamento e consulta de condições de entrega.
+- Respostas sobre horários, garantia, trocas, devoluções e políticas da loja.
+- Consulta dos pedidos vinculados à conta autenticada.
+- Registro de reclamações com protocolo, sem encaminhamento humano automático.
+- Histórico de conversas por conta, com retomada na interface.
+- Tratamento cordial de perguntas fora do escopo da loja.
 
-| Métrica | [Vetorial, top_k=5](docs/benchmark-baseline-rag-vetorial.md) | [Híbrido BM25 + RRF](docs/resultados-busca-hibrida.md) | [Vetorial, top_k=10](docs/benchmark-comparacao-top-k.md) |
-|---|---:|---:|---:|
-| Relevância do contexto | **89,6%** | 88,9% | **89,6%** |
-| Fundamentação nas evidências | **82,2%** | 78,2% | 77,7% |
-| Relevância da resposta | 71,4% | 72,3% | **73,6%** |
-| Plano de ferramentas aprovado | 31/38 | 32/38 | 32/38 |
-| Tokens registrados do agente | 777.818 | **689.476** | 942.823¹ |
-| Tokens registrados do avaliador | 620.887 | 567.612¹ | 686.459¹ |
-| Erros nas métricas da RAG Triad | 0 | 0 | 0 |
-| Status do relatório | `completed` | `partial`² | `partial`² |
+O atendimento usa a persona HarmonIA, em português brasileiro, com tom acolhedor,
+informal e profissional. As ferramentas não executam compras, pagamentos,
+reservas, cancelamentos ou reembolsos.
 
-Relevância do contexto e fundamentação têm 36 casos avaliados em cada execução;
-relevância da resposta tem 38. Os dois casos sem contexto foram pulados nas duas
-primeiras métricas, não aprovados automaticamente.
+## Executar com Docker
 
-¹ Consumo parcial por chamadas/mensagens sem usage. Embeddings não foram
-contabilizados em nenhuma execução. Diferenças de tokens também refletem o
-número de chamadas e o comportamento do agente, não somente a estratégia de busca.
+### Pré-requisitos
 
-² Um timeout de correção factual em cada execução, sem erros na RAG Triad.
-Há apenas uma execução por configuração; as diferenças observadas não demonstram
-causalidade nem significância estatística.
+- Git, Docker e **Docker Compose v2** (`docker compose`).
+- Acesso à internet e chaves com cota/créditos disponíveis para **OpenRouter**
+  (chat) e **Google Gemini API** (embeddings).
+- Portas locais `8000` e `5432` disponíveis, ou outras configuradas no `.env`.
 
-### Tokens e custo: vetorial versus híbrido
+Não é necessário instalar Python ou PostgreSQL no host para executar com Docker.
 
-O consumo abaixo soma **todas as chamadas ao DeepSeek capturadas** nos 38 casos,
-incluindo instruções, schemas das ferramentas, histórico, tool calls, resultados
-das ferramentas, evidências do RAG e respostas. Não considera apenas as mensagens
-visíveis ao cliente. Consultas SQL, BM25 e RRF não geram tokens do DeepSeek por si só.
+### Clonar e preencher o ambiente
 
-**Os totais de tokens e as estimativas de custo incluem o tool calling:** a geração
-dos nomes/argumentos das ferramentas, os resultados enviados de volta ao modelo
-e as chamadas intermediárias necessárias antes da resposta final. Esses tokens
-já estão contabilizados na tabela; não é necessário acrescentar outro valor para
-o tool calling. A execução da ferramenta em si pode ter custos de infraestrutura
-ou de APIs externas, que não fazem parte do custo de tokens do DeepSeek.
+```bash
+git clone https://github.com/vs-machado/ai-agent-emporio-da-musica.git
+cd ai-agent-emporio-da-musica
+git switch develop
+cp .env.example .env
+```
 
-| Consumo do agente no benchmark | Vetorial, `top_k=5` | Híbrido BM25 + RRF |
-|---|---:|---:|
-| Chamadas ao DeepSeek | 91 | 84 |
-| Tokens de entrada | 754.461 | 671.031 |
-| Tokens de saída | 23.357 | 18.445 |
-| Total de tokens | 777.818 | 689.476 |
-| Tokens de entrada lidos de cache, já incluídos na entrada | 524.800 | 437.248 |
-| Custo estimado dos 38 casos, sem desconto de cache | US$ 0,0456 | US$ 0,0394 |
+Edite o `.env`. Para a configuração padrão, preencha:
 
-Tarifas consultadas em **3 de novembro de 2026** para
-`deepseek/deepseek-v4.1-flash` no [OpenRouter](https://openrouter.ai/api/v1/models):
-US$ 0,045 por milhão de tokens de entrada sem cache, US$ 0,012 por milhão de
-entrada com cache e US$ 0,50 por milhão de saída.
+| Variável | Configuração |
+|---|---|
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Credenciais do banco; o exemplo inclui valores locais |
+| `AUTH_JWT_SECRET` | Segredo aleatório próprio com pelo menos 32 caracteres |
+| `DEMO_PASSWORD` | Senha inicial das contas demo, de 10 a 128 caracteres |
+| `OPENROUTER_API_KEY` | Chave para o modelo de chat DeepSeek via OpenRouter |
+| `GOOGLE_API_KEY` | Chave para indexar o manual e gerar embeddings das consultas |
 
-Para projetar o atendimento, foram consultadas 20 conversas do banco, com
-129 perguntas e 129 respostas: média de **6,45 perguntas respondidas por conversa**,
-ou 12,9 mensagens visíveis. Assumindo uma conversa por pessoa, 20 pessoas por dia
-e 30 dias de atendimento por mês:
+Para gerar o segredo JWT usando apenas Docker:
 
-| Projeção de custo do DeepSeek | Vetorial, `top_k=5` | Híbrido BM25 + RRF |
-|---|---:|---:|
-| Por atendimento, sem desconto de cache | US$ 0,0077 | US$ 0,0067 |
-| Por dia, sem desconto de cache | US$ 0,155 | US$ 0,134 |
-| Por mês, sem desconto de cache | **US$ 4,65** | **US$ 4,01** |
-| Por mês, com a proporção de cache observada em cada benchmark | **US$ 2,88** | **US$ 2,55** |
+```bash
+docker run --rm python:3.12-slim python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
 
-**Nesse volume, a redução de gasto é irrisória em termos absolutos:** cerca de
-**US$ 0,34 a US$ 0,63 por mês**, usando os valores não arredondados. A redução
-estimada é de 11,7% com o cache observado ou 13,6% sem desconto de cache, mas não
-justifica sozinha a complexidade adicional da solução híbrida.
+Copie o resultado para `AUTH_JWT_SECRET`. As chaves e o `.env` não devem ser
+publicados. O exemplo completo está em [`.env.example`](.env.example).
 
-**A busca vetorial possui uma estrutura mais simples:** um caminho principal de
-recuperação sem normalização lexical adicional, busca BM25 e etapa de fusão RRF.
-O fallback textual permanece disponível em caso de erro vetorial. Para o corpus
-atual, essa simplicidade de implementação, manutenção e diagnóstico, somada à
-ausência de ganho consistente na RAG Triad, sustenta manter o vetorial com
-`top_k=5`.
+O chat usa `CHAT_PRIMARY_MODEL=openrouter/deepseek/deepseek-v4.1-flash` e os
+embeddings usam `RAG_EMBEDDING_MODEL=gemini-embedding-001`, com 768 dimensões.
+`CHAT_FALLBACK_MODEL` fica vazio por padrão. A chave de chat não substitui a chave
+de embeddings: a primeira indexação precisa de acesso válido à API Google.
 
-As projeções extrapolam o consumo médio por turno dos benchmarks para o tamanho
-médio das conversas; não são um replay de conversas completas nem uma fatura.
-Mais histórico pode aumentar o consumo por turno, e a amostra do banco é pequena.
-A diferença observada também inclui menos chamadas e respostas menores no híbrido,
-não sendo prova de economia causada pelo BM25. Os valores cobrem somente o
-DeepSeek no atendimento: excluem embeddings Google, avaliador do benchmark,
-infraestrutura e taxas de pagamento/câmbio.
+Após preencher o ambiente, siga os guias de **[construção e inicialização](docs/docker.md#construir-e-iniciar)**
+e **[acesso à aplicação](docs/docker.md#acessar)**. O Compose executa migrations,
+ingestão, indexação e seed automaticamente. Para publicação HTTPS, consulte a
+[configuração do proxy e dos cookies](docs/autenticacao.md#https-atrás-do-coolify-ou-de-outro-proxy).
 
-### Resultados e justificativas
+## Arquitetura e decisões técnicas
 
-- [Linha de base da busca vetorial](docs/benchmark-baseline-rag-vetorial.md).
+```mermaid
+flowchart TD
+    UI["FastAPI / Gradio"] --> Auth["Autenticação"]
+    Auth --> Service["ChatService"]
+    Service --> Agent["Agente LangChain"]
+    Agent <--> Model["LiteLLM → DeepSeek V4.1 Flash / OpenRouter"]
+    Agent <--> Tools["Tools estruturadas"]
+    Tools --> Data["Dados e cálculos determinísticos"]
+    Data --> DB[("PostgreSQL")]
+    Tools --> RAG["Políticas / LlamaIndex"]
+    RAG --> Vectors["pgvector / PostgreSQL"]
+    RAG --> Embeddings["Gemini Embedding"]
+    Tools --> External["Relógio, feriados e ViaCEP"]
+    Service --> History["Histórico por conta"]
+    History --> DB
+```
+
+| Escolha | Justificativa |
+|---|---|
+| **LangChain + tool calling** | Orquestra consultas por ferramentas com schemas definidos, mantendo SQL, autorização e cálculos fora da LLM |
+| **DeepSeek via OpenRouter / LiteLLM** | Melhor comportamento observado no catálogo e nas ferramentas durante o desenvolvimento, com custo competitivo e acesso desacoplado do provedor |
+| **FastAPI + Gradio** | API e interface de chat em Python, compartilhando o mesmo serviço de atendimento, sem frontend separado |
+| **PostgreSQL, SQLAlchemy e Alembic** | Persistência transacional de dados, contas e conversas, com schema versionado |
+| **LlamaIndex + pgvector** | Recuperação das políticas com evidências e metadados, usando o mesmo banco dos dados operacionais |
+
+**Dados e ingestão.** Os seis CSVs de `agent-data/` são validados antes de uma
+carga transacional com upsert: tipos, valores monetários, status, JSON e
+relacionamentos. Os arquivos originais são preservados. Preços históricos e datas
+de recebimento ausentes não são inferidos. Consulte [ingestão](docs/ingestao-de-dados.md).
+
+**RAG.** Somente `kb/políticas_da_loja.pdf` é indexado; os CSVs são consultados como
+dados relacionais. O chunking segue a estrutura de seções/subseções do manual e
+preserva listas, tabelas e referências. O manual atual produz 25 chunks, com
+embeddings Gemini de 768 dimensões, busca por cosseno, `top_k=5` e orçamento de
+aproximadamente 2.000 tokens de contexto. Falhas vetoriais acionam busca textual
+PostgreSQL; isso não é busca híbrida. Para um PDF curto, uma abordagem mais simples
+também seria possível; a escolha permite demonstrar RAG e evoluir a base.
+
+A estratégia foi mantida após comparar busca vetorial, `top_k=10` e BM25 + RRF:
+não houve ganho consistente que justificasse a complexidade adicional. Detalhes
+em [RAG](docs/rag.md) e [decisão de RAG e custos](docs/decisao-rag-e-custos.md).
+
+**Prompt.** O [system prompt](app/agents/prompt.py) define persona, tom, fontes
+obrigatórias e tratamento de ambiguidades e perguntas fora do escopo. O agente
+deve consultar dados antes de afirmar preço, estoque ou status, usar políticas
+para regras da loja e não prometer operações inexistentes. As evidências apoiam
+a resposta sem expor referências documentais ao cliente. Autorizações e cálculos
+continuam validados pelo backend, independentemente do prompt.
+
+**Histórico.** Conversas e turnos completos, incluindo chamadas e resultados de
+ferramentas, ficam no PostgreSQL e podem ser retomados por conta. IDs de solicitação
+evitam reexecutar turnos já concluídos, e a titularidade de conversas e pedidos é
+verificada no backend. Detalhes em [agente](docs/agente.md),
+[autenticação](docs/autenticacao.md) e [decisões técnicas](docs/decisoes-tecnicas.md).
+
+## Avaliação e limitações
+
+O projeto usa pytest para validações, contratos e integração; Ruff para lint e
+formatação; e Ragas para avaliar respostas reais em 38 casos. Os benchmarks usam
+MiMo-V2.6-Flash como juiz e consideram RAG Triad, uso de ferramentas, tokens e
+latência. Na linha de base vetorial, a relevância do contexto foi **89,6%**, a
+fundamentação **82,2%** e a relevância da resposta **71,4%**.
+
+Essas médias são de uma execução e não garantem correção em todo atendimento.
+Consulte a metodologia, os resultados e suas ressalvas:
+
+- [Benchmarks: dataset, métricas e execução](docs/benchmarks.md).
+- [Resultados da linha de base vetorial](docs/benchmark-baseline-rag-vetorial.md).
 - [Resultados da busca híbrida BM25 + RRF](docs/resultados-busca-hibrida.md).
-- [Comparação de top_k 5 versus 10](docs/benchmark-comparacao-top-k.md).
-- [Análise do tamanho dos chunks](docs/analise-tamanho-chunks.md).
-- [Metodologia do benchmark](docs/benchmarks.md).
+- [Comparação vetorial com top-k 5 e 10](docs/benchmark-comparacao-top-k.md).
+- [Decisão de RAG e estimativas de custo](docs/decisao-rag-e-custos.md).
+- [Verificações locais: lint, formatação e testes](docs/qualidade-de-codigo.md#verificações-locais).
 
-Este README é um registro inicial da decisão e será ampliado posteriormente.
+Limitações e próximos passos priorizados:
+
+- **Erros da LLM:** ainda pode haver interpretação equivocada, informação sem
+  suporte suficiente ou promessa incompatível com as capacidades do sistema.
+- **Revisão dos benchmarks:** `factual_correctness` registrou **31,9% em 20 casos**
+  na linha de base. É necessário revisar referências, critérios e respostas caso
+  a caso e repetir a avaliação. Problemas metodológicos são uma hipótese, não
+  uma explicação comprovada nem motivo para descartar erros reais.
+- **Redundância de provedores:** o mecanismo de fallback de chat existe, mas está
+  desativado por padrão. Falta selecionar e validar um modelo alternativo e
+  ampliar a redundância dos serviços de IA, incluindo embeddings.
+- **Atendimento humano:** integrar encaminhamento, acompanhamento e confirmação
+  de solicitações. Hoje, registrar uma reclamação gera protocolo no banco, sem
+  notificar a equipe ou garantir retorno.
+- **Frete para outras regiões:** adicionar ferramenta de pesquisa na internet
+  para obter dimensões dos produtos e evoluir o cálculo de frete. Atualmente,
+  ViaCEP informa endereço, não tarifa; destinos externos dependem de confirmação
+  com um funcionário. Pesquisa de dimensões e cálculo externo ainda não existem.
+
+## Uso de IA no desenvolvimento
+
+Foi utilizado **OpenCode com GPT-6.1 Sol** como apoio ao desenvolvimento. As
+tecnologias foram definidas com auxílio da IA, que também analisou a estrutura
+dos documentos para apoiar as decisões sobre ingestão e RAG. A técnica escolhida
+considerou tanto a organização do manual de políticas quanto os resultados dos
+benchmarks executados.
+
+Os prompts foram elaborados inicialmente com IA e refinados manualmente de forma
+iterativa. Conversas armazenadas no banco foram fornecidas como insumo para a IA
+sugerir alterações, com revisão e direcionamento do desenvolvedor.
+
+O GPT-6.1 Sol é o modelo do assistente de código; o modelo de atendimento da
+aplicação é o **DeepSeek V4.1 Flash** (`openrouter/deepseek/deepseek-v4.1-flash`).
+O **Gemini Embedding** (`gemini-embedding-001`) é usado nos embeddings e o
+**MiMo-V2.6-Flash** (`xiaomi/mimo-v2.6-flash`) nas avaliações registradas.
+
+**Exemplos de interação:** os 3 a 5 exemplos de conversas exigidos pelo desafio
+serão adicionados em uma etapa posterior.
