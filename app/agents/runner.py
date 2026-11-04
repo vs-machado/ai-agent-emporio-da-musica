@@ -1,10 +1,12 @@
 """Agente padrão LangChain com limites e fallback por chamada de modelo."""
 
 import json
+import logging
 from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from threading import Lock
+from time import sleep
 from uuid import UUID, uuid5
 
 from langchain.agents import create_agent
@@ -22,6 +24,8 @@ from app.config import Settings
 from app.schemas.chat import ChatAction, ChatRequest, ChatResponse
 from app.services.auth import Principal, current_principal
 from app.services.chat import LIMIT_MESSAGE, UNAVAILABLE_MESSAGE, ChatTurn
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -60,6 +64,28 @@ class AttendanceMiddleware(AgentMiddleware):
     def __init__(self, models: AgentModels, settings: Settings):
         self.models = models
         self.settings = settings
+
+    def _call_with_retries(self, request, handler):
+        """Repete apenas a chamada do modelo em falhas técnicas recuperáveis."""
+        context: TurnContext = request.runtime.context
+        for attempt in range(self.settings.chat_model_retries + 1):
+            try:
+                return handler(request)
+            except OpenAIError as exc:
+                retrying = is_recoverable(exc) and attempt < self.settings.chat_model_retries
+                logger.warning(
+                    "model_call_failed request_id=%s model=%s error_type=%s "
+                    "status_code=%s attempt=%s retrying=%s",
+                    context.request_id,
+                    context.model_name,
+                    type(exc).__name__,
+                    getattr(exc, "status_code", None),
+                    attempt + 1,
+                    retrying,
+                )
+                if not retrying:
+                    raise
+                sleep(2**attempt)
 
     def wrap_model_call(self, request, handler):
         """Limita rodadas e troca de provedor sem repetir a execução das tools.
@@ -116,18 +142,20 @@ class AttendanceMiddleware(AgentMiddleware):
                 model_tools.append(tool)
         try:
             try:
-                response = handler(
-                    request.override(model=model, tools=model_tools, system_message=system_message)
+                response = self._call_with_retries(
+                    request.override(model=model, tools=model_tools, system_message=system_message),
+                    handler,
                 )
             except OpenAIError as exc:
                 if use_fallback or self.models.fallback is None or not is_recoverable(exc):
                     raise
                 context.used_fallback = True
                 context.model_name = self.models.fallback_name
-                response = handler(
+                response = self._call_with_retries(
                     request.override(
                         model=self.models.fallback, tools=model_tools, system_message=system_message
-                    )
+                    ),
+                    handler,
                 )
             final = response.result[-1] if response.result else None
             if not isinstance(final, AIMessage) or final.invalid_tool_calls:
@@ -142,7 +170,13 @@ class AttendanceMiddleware(AgentMiddleware):
             if final.response_metadata.get("finish_reason") in {"length", "max_tokens"}:
                 raise ModelOutputError("Resposta incompleta por limite de tokens")
             return response
-        except (OpenAIError, ModelOutputError):
+        except (OpenAIError, ModelOutputError) as exc:
+            logger.warning(
+                "model_turn_unavailable request_id=%s model=%s error_type=%s",
+                context.request_id,
+                context.model_name,
+                type(exc).__name__,
+            )
             context.status = "unavailable"
             return ModelResponse(result=[AIMessage(content=interrupted_message(context))])
 

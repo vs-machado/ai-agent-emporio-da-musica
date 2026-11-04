@@ -64,6 +64,7 @@ def settings():
         openrouter_api_key=None,
         chat_primary_model="gemini/gemini-3.5-flash-lite",
         chat_fallback_model="openrouter/deepseek/deepseek-v4.1-flash",
+        chat_model_retries=0,
     )
 
 
@@ -88,6 +89,162 @@ def make_service(settings, primary, tools=(), fallback=None):
 
 def timeout():
     return litellm.Timeout(message="private-provider-endpoint", model="test", llm_provider="test")
+
+
+@pytest.fixture
+def retry_settings(settings, monkeypatch):
+    monkeypatch.setattr("app.agents.runner.sleep", lambda seconds: None)
+    return settings.model_copy(update={"chat_model_retries": 1})
+
+
+@pytest.mark.parametrize("failure", ["timeout", "connection", "rate_limit", "server"])
+def test_transient_failure_retries_same_model_with_authenticated_context(retry_settings, failure):
+    errors = {
+        "timeout": timeout(),
+        "connection": litellm.APIConnectionError(
+            message="private-endpoint", model="test", llm_provider="test"
+        ),
+        "rate_limit": litellm.RateLimitError(
+            message="private-rate-limit", model="test", llm_provider="test"
+        ),
+        "server": litellm.APIError(
+            status_code=503, message="private-api-key", model="test", llm_provider="test"
+        ),
+    }
+    model = ScriptedModel(responses=[errors[failure], AIMessage(content="Olá!")])
+    fallback = ScriptedModel(responses=[])
+    principal = Principal(uuid4(), None, "conta@example.test", "Ana")
+    turn = make_service(retry_settings, model, fallback=fallback).chat(
+        ChatRequest(message="Olá"), user=principal
+    )
+    assert turn.response.status == "ok"
+    assert not turn.response.used_fallback
+    assert not fallback._inputs
+    assert model._inputs[0] == model._inputs[1]
+    assert '"email": "conta@example.test"' in model._inputs[1][0].text
+    assert [m.type for m in turn.messages] == ["human", "ai"]
+
+
+@pytest.mark.parametrize("retries", [0, 1, 2, 3])
+def test_retry_budget_and_backoff_are_bounded(settings, monkeypatch, caplog, retries):
+    delays = []
+    monkeypatch.setattr("app.agents.runner.sleep", delays.append)
+    settings = settings.model_copy(update={"chat_model_retries": retries})
+    model = ScriptedModel(responses=[timeout() for _ in range(retries + 1)])
+    request = ChatRequest(message="Olá")
+    turn = make_service(settings, model).chat(request)
+    assert turn.response.status == "unavailable"
+    assert len(model._inputs) == retries + 1
+    assert delays == [2**i for i in range(retries)]
+    assert str(request.request_id) in caplog.text
+    assert "error_type=Timeout" in caplog.text
+    assert "private-provider-endpoint" not in caplog.text
+    assert "private-provider-endpoint" not in turn.response.model_dump_json()
+
+
+def test_second_retry_recovers_before_showing_technical_warning(settings, monkeypatch):
+    delays = []
+    monkeypatch.setattr("app.agents.runner.sleep", delays.append)
+    settings = settings.model_copy(update={"chat_model_retries": 2})
+    model = ScriptedModel(responses=[timeout(), timeout(), AIMessage(content="Olá!")])
+    turn = make_service(settings, model).chat(ChatRequest(message="Olá"))
+    assert turn.response.status == "ok"
+    assert turn.response.message == "Olá!"
+    assert len(model._inputs) == 3
+    assert delays == [1, 2]
+    assert model._inputs[0] == model._inputs[1] == model._inputs[2]
+
+
+def test_retry_after_complaint_does_not_repeat_registration(retry_settings):
+    registrations = []
+    tool = service_tool(
+        "register_complaint",
+        "Registra reclamação",
+        ComplaintRegistration,
+        lambda request: (
+            registrations.append(request)
+            or {"status": "registered", "complaint_id": "protocol-123"}
+        ),
+    )
+    model = ScriptedModel(
+        responses=[
+            call(
+                "register_complaint",
+                {"contact_email": "cliente@example.com", "message": "Pedido atrasado"},
+            ),
+            timeout(),
+            AIMessage(content="Registrado sob protocolo protocol-123."),
+        ]
+    )
+    request = ChatRequest(message="Registre minha reclamação")
+    turn = make_service(retry_settings, model, [tool]).chat(request)
+    assert turn.response.status == "ok"
+    assert len(registrations) == 1
+    assert registrations[0].request_id == uuid5(request.request_id, "register_complaint")
+    assert len(turn.response.actions) == 1
+    assert turn.response.actions[0].reference == "protocol-123"
+    assert model._inputs[1] == model._inputs[2]
+    assert [m.type for m in turn.messages] == ["human", "ai", "tool", "ai"]
+
+
+def test_exhausted_primary_retries_then_retries_fallback_without_restarting_turn(retry_settings):
+    executed = []
+    tool = service_tool(
+        "search_products",
+        "Busca",
+        ProductSearch,
+        lambda request: executed.append(request) or {"status": "ok"},
+    )
+    primary = ScriptedModel(responses=[timeout(), timeout()])
+    fallback = ScriptedModel(
+        responses=[timeout(), call(), timeout(), AIMessage(content="Resultado consultado")]
+    )
+    turn = make_service(retry_settings, primary, [tool], fallback).chat(
+        ChatRequest(message="Busque violão")
+    )
+    assert turn.response.status == "ok"
+    assert turn.response.used_fallback
+    assert turn.response.model == "fallback"
+    assert len(primary._inputs) == 2
+    assert len(fallback._inputs) == 4
+    assert len(executed) == 1
+    assert primary._inputs[0] == primary._inputs[1] == fallback._inputs[0]
+    assert fallback._inputs[2] == fallback._inputs[3]
+
+
+def test_both_providers_exhaust_retries_before_unavailable(retry_settings):
+    primary = ScriptedModel(responses=[timeout(), timeout()])
+    fallback = ScriptedModel(responses=[timeout(), timeout()])
+    turn = make_service(retry_settings, primary, fallback=fallback).chat(ChatRequest(message="Olá"))
+    assert turn.response.status == "unavailable"
+    assert turn.response.used_fallback
+    assert len(primary._inputs) == len(fallback._inputs) == 2
+
+
+def test_retries_do_not_consume_extra_model_rounds_or_bypass_round_limit(retry_settings):
+    settings = retry_settings.model_copy(update={"chat_max_model_calls": 1})
+    model = ScriptedModel(responses=[timeout(), call()])
+    tool = service_tool("search_products", "Busca", ProductSearch, lambda request: {"status": "ok"})
+    turn = make_service(settings, model, [tool]).chat(ChatRequest(message="Busque violão"))
+    assert turn.response.status == "limit_reached"
+    assert len(model._inputs) == 2
+    assert len(turn.response.actions) == 1
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        AIMessage(content=""),
+        AIMessage(content="Incompleta", response_metadata={"finish_reason": "length"}),
+    ],
+)
+def test_invalid_model_output_is_not_retried_or_sent_to_fallback(retry_settings, response):
+    primary = ScriptedModel(responses=[response])
+    fallback = ScriptedModel(responses=[])
+    turn = make_service(retry_settings, primary, fallback=fallback).chat(ChatRequest(message="Olá"))
+    assert turn.response.status == "unavailable"
+    assert len(primary._inputs) == 1
+    assert not fallback._inputs
 
 
 def test_unconfigured_service_makes_no_network_calls(settings, monkeypatch):
@@ -372,7 +529,7 @@ def test_complaint_key_is_stable_across_retries_and_ignores_model_argument(setti
 
 
 @pytest.mark.parametrize("code", [400, 401, 403, 404, 422])
-def test_nonrecoverable_errors_do_not_trigger_fallback(settings, code):
+def test_nonrecoverable_errors_do_not_trigger_fallback(retry_settings, code):
     primary = ScriptedModel(
         responses=[
             litellm.APIError(
@@ -384,9 +541,10 @@ def test_nonrecoverable_errors_do_not_trigger_fallback(settings, code):
         ]
     )
     fallback = ScriptedModel(responses=[AIMessage(content="Não deveria ser usada")])
-    turn = make_service(settings, primary, fallback=fallback).chat(ChatRequest(message="Olá"))
+    turn = make_service(retry_settings, primary, fallback=fallback).chat(ChatRequest(message="Olá"))
     assert turn.response.status == "unavailable"
     assert not fallback._inputs
+    assert len(primary._inputs) == 1
     assert not turn.response.used_fallback
     assert "private-api-key" not in turn.response.model_dump_json()
 
@@ -890,7 +1048,9 @@ def test_agent_retry_and_fallback_keep_one_real_complaint(engine, settings):
     assert first.response.used_fallback and retry.response.used_fallback
 
 
-def test_langchain_litellm_and_complaint_tool_integrate_without_network(settings, monkeypatch):
+def test_langchain_litellm_and_complaint_tool_integrate_without_network(
+    retry_settings, monkeypatch
+):
     requests, registrations = [], []
 
     def complete(**kwargs):
@@ -921,6 +1081,8 @@ def test_langchain_litellm_and_complaint_tool_integrate_without_network(settings
                     }
                 ]
             )
+        if len(requests) == 2:
+            raise timeout()
         return litellm.ModelResponse(
             choices=[
                 {
@@ -934,7 +1096,9 @@ def test_langchain_litellm_and_complaint_tool_integrate_without_network(settings
         )
 
     monkeypatch.setattr(litellm, "completion", complete)
-    configured = settings.model_copy(update={"google_api_key": settings.postgres_password})
+    configured = retry_settings.model_copy(
+        update={"google_api_key": retry_settings.postgres_password}
+    )
     tool = service_tool(
         "register_complaint",
         "Registra reclamação",
@@ -952,6 +1116,8 @@ def test_langchain_litellm_and_complaint_tool_integrate_without_network(settings
     assert requests[0]["num_retries"] == 0
     assert "request_id" not in requests[0]["tools"][0]["function"]["parameters"]["properties"]
     assert requests[1]["messages"][-1]["tool_call_id"] == "register"
+    assert len(requests) == 3
+    assert requests[1]["messages"] == requests[2]["messages"]
 
 
 def test_api_startup_prepares_unconfigured_chat_service_without_network(monkeypatch):
