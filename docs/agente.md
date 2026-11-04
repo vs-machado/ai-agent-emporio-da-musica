@@ -69,6 +69,7 @@ confirma abertura nem extensão na Black Friday. Não há promessa de retorno hu
 | `CHAT_PRIMARY_MODEL` | `openrouter/deepseek/deepseek-v4.1-flash` | Identificador LiteLLM do primário |
 | `CHAT_FALLBACK_MODEL` | vazia | Fallback opcional; ausente, vazia ou só espaços desativa a rota |
 | `CHAT_MODEL_TIMEOUT` | `20` | Timeout em segundos por tentativa de provedor |
+| `CHAT_MODEL_RETRIES` | `2` | Tentativas adicionais por chamada/modelo em falhas transitórias; de 0 a 3 |
 | `CHAT_MAX_OUTPUT_TOKENS` | `2048` | Máximo de tokens de saída por chamada |
 | `CHAT_MAX_MODEL_CALLS` | `6` | Rodadas de modelo por turno |
 | `CHAT_MAX_TOOL_CALLS` | `12` | Execuções de tools por turno |
@@ -176,16 +177,25 @@ idempotência mesmo se a gravação final do chat falhar.
 
 ## Fallback e interrupções
 
-- Timeout, falha de conexão, rate limit e erros 5xx permitem uma tentativa no
-  fallback configurado. Sem sua chave, a falha resulta em `unavailable`.
+- Timeout, falha de conexão, rate limit e erros 5xx acionam até duas novas tentativas
+  no mesmo modelo por padrão, após 1 e 2 segundos. `CHAT_MODEL_RETRIES` permite de zero
+  a três retries, com esperas de 1, 2 e 4 segundos. Esgotadas as tentativas do
+  primário, usa o fallback configurado, com o mesmo orçamento de retries.
+  Sem fallback disponível ou após suas falhas, retorna `unavailable`.
 - Erros 4xx de autenticação/configuração, contexto excedido, argumentos JSON
   malformados e respostas sem texto público não acionam o fallback.
 - O fallback recebe as mensagens e resultados já disponíveis. Não reinicia o
   agente nem executa novamente uma tool concluída. Após a troca, continua sendo
   usado naquele turno; o turno seguinte começa pelo primário.
-- Retries automáticos ficam desabilitados tanto no adaptador LangChain quanto
-  na chamada LiteLLM. Com seis rodadas e fallback, pode haver até sete tentativas
-  de provedor, pois apenas a primeira falha do primário permite a troca.
+- Os retries são controlados no middleware, repetindo somente a chamada do modelo
+  com o mesmo contexto; não repetem tools concluídas nem o turno inteiro.
+  Retries internos do adaptador LangChain e do LiteLLM continuam desabilitados
+  para evitar multiplicação de tentativas. Com seis rodadas e dois retries, há no
+  máximo 18 tentativas sem fallback ou 21 com fallback, pois só ocorre uma troca
+  de modelo por turno. Retries não consomem rodadas extras do agente.
+- Falhas registram `request_id`, modelo, classe do erro, código HTTP e tentativa
+  nos logs, sem mensagem bruta do provedor, credenciais ou conteúdo da conversa.
+  Respostas inválidas são identificadas pela classe `ModelOutputError`, sem retry.
 - Ao atingir o limite de tools ou rodadas, o agente encerra com `limit_reached`
   e mensagem em português, mantendo o pareamento dos resultados de tools.
 - Se uma reclamação já tiver sido registrada antes de uma falha de modelo ou

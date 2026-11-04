@@ -105,6 +105,7 @@ def snapshot(engine, settings, retriever):
                 "chat_primary_model",
                 "chat_fallback_model",
                 "chat_model_timeout",
+                "chat_model_retries",
                 "chat_max_output_tokens",
                 "chat_max_model_calls",
                 "chat_max_tool_calls",
@@ -112,7 +113,7 @@ def snapshot(engine, settings, retriever):
             )
         },
         "temperature": 0,
-        "model_retries": 0,
+        "model_retries": settings.chat_model_retries,
         "primary_enabled": (
             settings.openrouter_api_key is not None
             if settings.chat_primary_model.startswith("openrouter/")
