@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     chat_primary_model: str = "openrouter/deepseek/deepseek-v4.1-flash"
     chat_fallback_model: str | None = None
     chat_model_timeout: float = Field(default=20, gt=0, le=120)
+    chat_model_retries: int = Field(default=2, ge=0, le=3)
     chat_max_output_tokens: int = Field(default=2048, ge=128, le=8192)
     chat_max_model_calls: int = Field(default=6, ge=1, le=20)
     chat_max_tool_calls: int = Field(default=12, ge=1, le=50)
