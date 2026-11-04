@@ -44,12 +44,19 @@ def test_snapshot_uses_retriever_configuration_and_stable_hash(monkeypatch):
         reporting, "Session", lambda *args: nullcontext(SimpleNamespace(scalar=lambda *args: None))
     )
     settings = Settings(
-        _env_file=None, postgres_db="test", postgres_user="test", postgres_password="test"
+        _env_file=None,
+        postgres_db="test",
+        postgres_user="test",
+        postgres_password="test",
+        chat_model_retries=2,
     )
     retriever = SimpleNamespace(
         metadata=lambda: {"strategy": "hybrid", "parameters": {"text_k": 10, "vector_k": 8}}
     )
-    first = snapshot(None, settings, retriever)["rag"]
+    configuration = snapshot(None, settings, retriever)
+    assert configuration["model_retries"] == 2
+    assert configuration["agent"]["chat_model_retries"] == 2
+    first = configuration["rag"]
     retriever.metadata = lambda: {"parameters": {"vector_k": 8, "text_k": 10}, "strategy": "hybrid"}
     reordered = snapshot(None, settings, retriever)["rag"]
     assert first["retrieval_sha256"] == reordered["retrieval_sha256"]
